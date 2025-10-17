@@ -12,7 +12,8 @@ class DepolarizingChannel:
 
     def __init__(self, p):
         if not 0 <= p <= 1:
-            raise ValueError(f"Depolarizing probability must be between 0 and 1, got {p}")
+            raise ValueError(
+                f"Depolarizing probability must be between 0 and 1, got {p}")
         self.p = p
 
         # pauli matrices
@@ -31,6 +32,13 @@ class DepolarizingChannel:
             np.sqrt(self.p/4) * self.Y,
             np.sqrt(self.p/4) * self.Z
         ]
+
+    # ε(ρ) = Σᵢ (Eᵢ @ ρ @ Eᵢ†)
+    def apply(self, rho):
+        result = np.zeros_like(rho, dtype=complex)
+        for E in self.kraus.kraus_ops:
+            result += E @ rho @ E.T.conj()
+        return result
 
     def __repr__(self):
         return f"DepolarizingChannel(p={self.p})"
