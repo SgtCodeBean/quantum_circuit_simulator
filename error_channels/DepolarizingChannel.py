@@ -34,11 +34,26 @@ class DepolarizingChannel:
         ]
 
     # ε(ρ) = Σᵢ (Eᵢ @ ρ @ Eᵢ†)
-    def apply(self, rho):
-        result = np.zeros_like(rho, dtype=complex)
+    def apply(self, density_matrix):
+        result = np.zeros_like(density_matrix, dtype=complex)
         for E in self.kraus.kraus_ops:
-            result += E @ rho @ E.T.conj()
+            result += E @ density_matrix @ E.T.conj()
         return result
 
     def __repr__(self):
         return f"DepolarizingChannel(p={self.p})"
+
+
+if __name__ == "__main__":
+    p = 0.1
+    dc = DepolarizingChannel(p)
+    # |+⟩ = (1/√2)(|0⟩ + |1⟩)
+    sample = np.array([1, 1], dtype=complex) / np.sqrt(2)
+    # convert state vector to density matrix: ρ = |ψ⟩⟨ψ|
+    density_matrix = np.outer(sample, sample.conj())
+
+    print("Input state vector:", sample)
+    print("\nInput density matrix:")
+    print(density_matrix)
+    print("\nAfter applying depolarizing channel (p=0.1):")
+    print(dc.apply(density_matrix))
