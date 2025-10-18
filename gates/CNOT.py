@@ -28,4 +28,5 @@ class CnotGate:
 
 cnot_gate = CnotGate()
 sample = np.array([0, 0, 1, 0], dtype=complex) # input: |10⟩
+
 print(cnot_gate.apply(sample))  # output: |11⟩
