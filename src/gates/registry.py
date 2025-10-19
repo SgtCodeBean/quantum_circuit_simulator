@@ -37,7 +37,7 @@ class GateRegistry:
         self.add("h", hadamard_gate())
         self.add("toffoli", toffoli_gate())
         self.add("cnot", cnot_gate())
-        self.add("phase", phase_gate())
+        self.add("s", phase_gate())
         # TODO: add more primitive gates as needed
 
     def add(self, gate_name, gate_matrix, overwrite: bool = False):
