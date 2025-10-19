@@ -1,5 +1,5 @@
 import numpy as np
-from Gate import Gate
+from .Gate import Gate
 
 class PhaseGate(Gate):
     def __init__(self):
