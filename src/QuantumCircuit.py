@@ -2,7 +2,6 @@ import numpy as np
 from .utils.quantum_operations import apply_qubit
 import sys
 sys.path.append('..')
-from gates.Gate import Gate
 from gates.PauliGates import PauliGates
 
 """
