@@ -1,12 +1,10 @@
 import numpy as np
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 from primitives import *
+from utils.linalg import is_power_of_two_dim
 
 KrausSet = Sequence[np.ndarray]
 Params = Tuple[float, ...]
-
-def _is_power_of_two_dim(dim: int) -> bool:
-    return dim > 0 and (dim & (dim - 1)) == 0
 
 def _validate_kraus(kraus: KrausSet, atol: float = 1e-10) -> Tuple[int, int]:
     if not kraus:
@@ -14,7 +12,7 @@ def _validate_kraus(kraus: KrausSet, atol: float = 1e-10) -> Tuple[int, int]:
     d0, d1 = kraus[0].shape
     if d0 != d1:
         raise ValueError("Kraus operators must be square.")
-    if not _is_power_of_two_dim(d0):
+    if not is_power_of_two_dim(d0):
         raise ValueError("Dimension must be 2^n.")
     d = d0
     total = np.zeros((d, d), dtype=complex)
