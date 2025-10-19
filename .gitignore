@@ -1,1 +1,4 @@
-__pycache__
+/.quantum_circuit_sim/
+/.idea/
+*.iml
+*.xml
