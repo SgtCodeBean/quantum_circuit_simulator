@@ -28,9 +28,9 @@ class Gate:
         return f"{self.name} ({self.arity}q) Gate:\n{self.matrix}"
 
 class GateRegistry:
-    def __init__(self, load_defaults: bool = True):
+    def __init__(self, preload_defaults: bool = True):
         self._defs: Dict[str, Gate] = {}
-        if load_defaults:
+        if preload_defaults:
             pauli_x, pauli_y, pauli_z = pauli_gates()
             self.add(gate_name="x", gate_matrix=pauli_x)
             self.add("y", pauli_y)
