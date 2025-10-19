@@ -1,8 +1,8 @@
 import numpy as np
-from .utils.quantum_operations import apply_qubit
+from utils.quantum_operations import apply_qubit
 import sys
 sys.path.append('..')
-from gates.PauliGates import PauliGates
+from gates.registry import GateRegistry
 
 """
 QuantumCircuit class for building and simulating quantum circuits in Hilbert space
@@ -73,11 +73,12 @@ class QuantumCircuit:
 
 
 if __name__ == "__main__":
+    reg = GateRegistry()
     # single qubit circuit with Pauli X gate
     print("\n" + "-" * 40)
     qc1 = QuantumCircuit(num_qubits=1)
     print(f"Initial state: {qc1.get_state()}")  # should be [1, 0] = |0⟩
-    qc1.add_gate(PauliGates.X, targets=0)
+    qc1.add_gate(reg.get('x'), targets=0)
     qc1.execute()
     print(f"After X gate: {qc1.get_state()}")   # should be [0, 1] = |1⟩
     print(f"Probabilities: {qc1.measure_probabilities()}")
@@ -86,23 +87,23 @@ if __name__ == "__main__":
     print("\n" + "-" * 40)
     qc2 = QuantumCircuit(num_qubits=2)
     print(f"Initial state: {qc2.get_state()}")       # [1, 0, 0, 0] = |00⟩
-    qc2.add_gate(PauliGates.X, targets=1)
+    qc2.add_gate(reg.get('x'), targets=1)
     qc2.execute()
     print(f"After X on qubit 1: {qc2.get_state()}")  # [0, 1, 0, 0] = |01⟩
 
     # multiple gates on different qubits
     print("\n" + "-" * 40)
     qc3 = QuantumCircuit(num_qubits=2)
-    qc3.add_gate(PauliGates.X, targets=0)  # X on qubit 0
-    qc3.add_gate(PauliGates.X, targets=1)  # X on qubit 1
+    qc3.add_gate(reg.get('x'), targets=0)  # X on qubit 0
+    qc3.add_gate(reg.get('x'), targets=1)  # X on qubit 1
     qc3.execute()
     print(f"After X on both qubits: {qc3.get_state()}")  # [0, 0, 0, 1] = |11⟩
 
     # using Z gate (phase flip)
     print("\n" + "-" * 40)
     qc4 = QuantumCircuit(num_qubits=1)
-    qc4.add_gate(PauliGates.X, targets=0)
-    qc4.add_gate(PauliGates.Z, targets=0)
+    qc4.add_gate(reg.get('x'), targets=0)
+    qc4.add_gate(reg.get('z'), targets=0)
     qc4.execute()
     print(f"After X then Z: {qc4.get_state()}")  # [0, -1] = -|1⟩
 

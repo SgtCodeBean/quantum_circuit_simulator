@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Tuple
 from primitives import *
 from utils.linalg import is_power_of_two_dim
 
