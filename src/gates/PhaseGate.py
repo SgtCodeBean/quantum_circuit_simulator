@@ -1,18 +1,14 @@
 import numpy as np
+from Gate import Gate
 
-class PhaseGate:
+class PhaseGate(Gate):
     def __init__(self):
-        self.name = "phase gate"
-        self.matrix = np.array([
+        matrix = np.array([
             [1, 0],
             [0, 1j]
         ], dtype=complex)
 
-    def apply(self, state_vector):
-        if state_vector.shape != (2,):
-            raise ValueError("Input must be a single-qubit state vector of shape (2,).")
-
-        return np.dot(self.matrix, state_vector)
+        super().__init__("phase gate", matrix)
 
 
 if __name__ == "__main__":

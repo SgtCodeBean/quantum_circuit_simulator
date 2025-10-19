@@ -1,4 +1,3 @@
-import numpy as np
 from typing import Dict, List
 from gates.primitives import pauli_gates, hadamard_gate, toffoli_gate
 from utils.linalg import is_unitary, is_power_of_two_dim
@@ -29,16 +28,17 @@ class Gate:
         return f"{self.name} ({self.arity}q) Gate:\n{self.matrix}"
 
 class GateRegistry:
-    def __init__(self, preload_defaults: bool = True):
+    def __init__(self):
         self._defs: Dict[str, Gate] = {}
-        if preload_defaults:
-            pauli_x, pauli_y, pauli_z = pauli_gates()
-            self.add(gate_name="x", gate_matrix=pauli_x)
-            self.add("y", pauli_y)
-            self.add("z", pauli_z)
-            self.add("h", hadamard_gate())
-            self.add("toffoli", toffoli_gate())
-            # TODO: add more primitive gates as needed
+        pauli_x, pauli_y, pauli_z = pauli_gates()
+        self.add(gate_name="x", gate_matrix=pauli_x)
+        self.add("y", pauli_y)
+        self.add("z", pauli_z)
+        self.add("h", hadamard_gate())
+        self.add("toffoli", toffoli_gate())
+        self.add("cnot", cnot_gate())
+        self.add("phase", phase_gate())
+        # TODO: add more primitive gates as needed
 
     def add(self, gate_name, gate_matrix, overwrite: bool = False):
         if not overwrite and gate_name in self._defs:
