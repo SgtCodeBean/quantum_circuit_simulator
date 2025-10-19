@@ -17,4 +17,18 @@ def toffoli_gate():
     toffoli_matrix[7, 6] = 1
     return toffoli_matrix
 
+def cnot_gate():
+    return np.array([
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 0, 1],
+        [0, 0, 1, 0]
+    ])
+
+def phase_gate():
+    return np.array([
+        [1, 0],
+        [0, 1j]
+    ])
+
 # TODO: Add more primitive gates as needed
