@@ -3,6 +3,7 @@ from utils.quantum_operations import apply_qubit
 import sys
 sys.path.append('..')
 from gates.registry import GateRegistry
+from cbit import CBit
 
 """
 QuantumCircuit class for building and simulating quantum circuits in Hilbert space
@@ -12,7 +13,7 @@ This class manages an n-qubit quantum state and allows sequential application of
 unitary quantum gates to evolve the state.
 """
 class QuantumCircuit:
-    def __init__(self, num_qubits):
+    def __init__(self, num_qubits, num_cbits=0):
         if num_qubits < 1:
             raise ValueError("Number of qubits must be at least 1")
 
@@ -21,6 +22,8 @@ class QuantumCircuit:
         self.state = np.zeros(2**num_qubits, dtype=complex)
         self.state[0] = 1.0
         self.gates = []
+        self.cbits = CBit(num_bits=num_cbits)
+        self.measure_ops = []
 
     def add_gate(self, gate, targets):
         U = np.array(gate.matrix, dtype=complex)
@@ -40,6 +43,8 @@ class QuantumCircuit:
     def execute(self):
         for gate, targets in self.gates:
             self.state = apply_qubit(self.state, gate, targets, self.num_qubits)
+        for qubit, cbit in self.measure_ops:
+            self._perform_measure(qubit, cbit)
         return self
 
     def get_state(self):
@@ -59,6 +64,40 @@ class QuantumCircuit:
     def measure_probabilities(self):
         return np.abs(self.state)**2
 
+    def measure(self, qubit, cbit):
+        if qubit not in range(self.num_qubits):
+            raise ValueError(f"Qubit index {qubit} out of bounds!")
+        elif cbit not in range(self.cbits.__len__()):
+            raise ValueError(f"Classic register {cbit} out of bounds!")
+        self.measure_ops.append((qubit, cbit))
+        return self
+    
+    def _perform_measure(self, qubit, cbit):
+        bit_mask = 1 << (self.num_qubits - qubit - 1)
+
+        i0 = [i for i in range(2**self.num_qubits) if (i & bit_mask) == 0]
+        i1 = [i for i in range(2**self.num_qubits) if (i & bit_mask) != 0]
+
+        p0 = np.sum(np.abs(self.state[i0]) ** 2)
+        p1 = np.sum(np.abs(self.state[i1]) ** 2)
+
+        # Check for strong rounding error of probability floats
+        if abs(p0 + p1 - 1) > 1e-10:
+            norm = np.sqrt(p0 + p1)
+            p0 /= norm
+            p1 /= norm
+        
+        collapse = np.random.choice([0, 1], p=[p0, p1])
+
+        if collapse == 0:
+            self.state[i1] = 0
+            self.state /= np.sqrt(p0)
+        else:
+            self.state[i0] = 0
+            self.state /= np.sqrt(p1)
+        
+        self.cbits.set_bit(cbit, collapse)
+
     def __repr__(self):
         return f"QuantumCircuit(num_qubits={self.num_qubits}, gates={len(self.gates)})"
 
@@ -69,14 +108,17 @@ class QuantumCircuit:
             circuit_str += "Gate sequence:\n"
             for i, (gate, targets) in enumerate(self.gates):
                 circuit_str += f"  {i+1}. {gate.name} on qubit(s) {targets}\n"
+        if self.measure_ops:
+            circuit_str += "Measurement sequence:\n"
+            for i, (qubit, cbit) in enumerate(self.measure_ops):
+                circuit_str += f"  {i+1}. qubit {qubit} stored in cbit{cbit}"
         return circuit_str
 
-
-if __name__ == "__main__":
+def main():
     reg = GateRegistry()
     # single qubit circuit with Pauli X gate
     print("\n" + "-" * 40)
-    qc1 = QuantumCircuit(num_qubits=1)
+    qc1 = QuantumCircuit(num_qubits=1, num_cbits=1)
     print(f"Initial state: {qc1.get_state()}")  # should be [1, 0] = |0⟩
     qc1.add_gate(reg.get('x'), targets=0)
     qc1.execute()
@@ -109,3 +151,7 @@ if __name__ == "__main__":
 
     print("Circuit info:")
     print(qc4)
+
+
+if __name__ == "__main__":
+    main()
