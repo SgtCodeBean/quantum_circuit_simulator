@@ -13,6 +13,7 @@ class BitFlipChannel:
         self.name = f"Bit Flip Channel (probability={p})"
         self.identity_matrix = np.identity(2)
         self.x_matrix = np.array([[0, 1], [1, 0]])
+        self.kraus = np.array([np.sqrt(1-self.probability)*self.identity_matrix, np.sqrt(self.probability)*self.x_matrix])
 
     def apply(self, state_vector):
         if state_vector.shape != (2,):
