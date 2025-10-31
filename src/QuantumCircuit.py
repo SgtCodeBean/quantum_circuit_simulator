@@ -21,16 +21,15 @@ class QuantumCircuit:
         # initialize state vector in Hilbert space: |00...0⟩
         self.state = np.zeros(2**num_qubits, dtype=complex)
         self.state[0] = 1.0
-        self.gates = []
+        self.ops = []
         self.cbits = CBit(num_bits=num_cbits)
-        self.measure_ops = []
 
     def add_gate(self, gate, targets):
         U = np.array(gate.matrix, dtype=complex)
         if not self.is_unitary(U):
             raise ValueError(f"Gate {gate.name} is not unitary")
 
-        self.gates.append((gate, targets))
+        self.ops.append(("gate", gate, targets))
         return self
 
     def is_unitary(self, matrix, tol=1e-10):
@@ -41,10 +40,13 @@ class QuantumCircuit:
         return np.allclose(product, identity, atol=tol)
 
     def execute(self):
-        for gate, targets in self.gates:
-            self.state = apply_qubit(self.state, gate, targets, self.num_qubits)
-        for qubit, cbit in self.measure_ops:
-            self._perform_measure(qubit, cbit)
+        for op in self.ops:
+            if op[0] == "gate":
+                _, gate, targets = op
+                self.state = apply_qubit(self.state, gate, targets, self.num_qubits)
+            elif op[0] == "measure":
+                _, qubit, cbit = op
+                self._perform_measure(qubit, cbit)
         return self
 
     def get_state(self):
@@ -69,7 +71,7 @@ class QuantumCircuit:
             raise ValueError(f"Qubit index {qubit} out of bounds!")
         elif cbit not in range(self.cbits.__len__()):
             raise ValueError(f"Classic register {cbit} out of bounds!")
-        self.measure_ops.append((qubit, cbit))
+        self.ops.append(("measure", qubit, cbit))
         return self
     
     def _perform_measure(self, qubit, cbit):
