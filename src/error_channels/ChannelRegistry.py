@@ -1,4 +1,3 @@
-import numpy as np
 from typing import Callable, Dict, List
 from utils.utils import Params, KrausSet
 from error_channels.Channel import Channel

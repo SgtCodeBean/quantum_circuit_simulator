@@ -15,6 +15,7 @@ class Gate:
             raise ValueError("Matrix dimension must be 2^n")
         if not is_unitary(self.matrix):
             raise ValueError("Matrix must be unitary")
+        self.dim = dim
         self.arity = int(np.log2(dim))
 
         if noise is None:
@@ -25,7 +26,7 @@ class Gate:
             self.noise = list(noise)
 
     
-    def apply(self, state):
+    def apply(self, state, rng=None):
         state = np.array(state, dtype=complex)
         n = self.arity
 
@@ -39,7 +40,7 @@ class Gate:
         
         # condition if noisey channels are applied to the gate (use density matrix)
         if state.shape in [(2**n,), (2**n, 1)]:
-            rng = np.random
+            rng = np.random.default_rng() if rng is None else rng
             psi = self.matrix @ state
             # sequentially apply channels
             for ch in self.noise:
