@@ -71,8 +71,8 @@ class GateRegistry:
             self.add("y", pauli_y)
             self.add("z", pauli_z)
             self.add("h", hadamard_gate())
-            self.add("toffoli", toffoli_gate())
-            self.add("cnot", cnot_gate())
+            self.add("ccx", toffoli_gate())
+            self.add("cx", cnot_gate())
             self.add("s", phase_gate())
         # TODO: add more primitive gates as needed
 

@@ -36,10 +36,16 @@ class Channel:
             raise ValueError(f"ρ must be {self.dim}x{self.dim}.")
         return sum(K @ rho @ K.conj().T for K in self.kraus_ops)
 
-    def apply_statevector(self, psi: np.ndarray, rng=np.random) -> np.ndarray:
+    def apply_statevector(self, psi: np.ndarray, rng=np.random, metrics_callback=None) -> np.ndarray:
         """
         Monte Carlo unraveling: sample an outcome i with prob p_i=||K_i|ψ>||^2,
         then return K_i|ψ>/sqrt(p_i).
+
+        Args:
+            psi: Input state vector
+            rng: Random number generator
+            metrics_callback: Optional callback function(channel_name, duration, kraus_index)
+                            for recording metrics
         """
         psi = np.asarray(psi, dtype=complex)
         if psi.shape not in [(self.dim,), (self.dim, 1)]:
@@ -58,6 +64,11 @@ class Channel:
         if n == 0:
             # extremely unlikely unless Kraus set is rank-deficient for this state
             return new
+
+        # Record metrics if callback provided
+        if metrics_callback is not None:
+            metrics_callback(self.name, kraus_index=i)
+
         return new / n
 
     def __str__(self):

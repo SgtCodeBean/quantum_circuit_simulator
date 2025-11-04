@@ -66,6 +66,26 @@ def parse_qasm_file(path: Union[str, Path],
         qc = transpile(qc, basis_gates=basis_gates, optimization_level=0)
     return _qc_to_ir(qc)
 
+# def create_quantum_circuit(ir: Dict[str, Any]) -> QuantumCircuit:
+#     """Create a Qiskit QuantumCircuit from the IR."""
+#     n_qubits = ir["n_qubits"]
+#     n_clbits = ir["n_clbits"]
+#     qc = QuantumCircuit(n_qubits, n_clbits)
+#
+#     for op in ir["ops"]:
+#         name   = op["name"]
+#         qargs  = op["qargs"]
+#         cargs  = op["cargs"]
+#         params = op["params"]
+#         condition = op["condition"]
+#
+#         if condition:
+#             qc.append(qc.to_gate(name=name, params=params).control(), qargs + cargs)
+#         else:
+#             getattr(qc, name)(*qargs, *cargs, *params)
+#
+#     return qc
+
 # Test
 if __name__ == "__main__":
     qasm_str = """
