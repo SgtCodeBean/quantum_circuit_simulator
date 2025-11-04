@@ -46,7 +46,7 @@ class QuantumCircuit:
                 self.state = apply_qubit(self.state, gate, targets, self.num_qubits)
             elif op[0] == "measure":
                 _, qubit, cbit = op
-                self._perform_measure(qubit, cbit)
+                collapsed = self._perform_measure(qubit, cbit)
         return self
 
     def get_state(self):
@@ -55,7 +55,7 @@ class QuantumCircuit:
     def reset_all(self):
         self.state = np.zeros(2**self.num_qubits, dtype=complex)
         self.state[0] = 1.0
-        self.gates = []
+        self.ops = []
         return self
 
     def reset_state_only(self):
@@ -67,6 +67,13 @@ class QuantumCircuit:
         return np.abs(self.state)**2
 
     def measure(self, qubit, cbit):
+        """
+        Adds a measurement step to the simulator's set of opperations.
+
+        Args:
+            qubit (int) index of the qubit that will have its value read
+            cbit (int) index of the classic register that will store the value
+        """
         if qubit not in range(self.num_qubits):
             raise ValueError(f"Qubit index {qubit} out of bounds!")
         elif cbit not in range(self.cbits.__len__()):
@@ -75,6 +82,19 @@ class QuantumCircuit:
         return self
     
     def _perform_measure(self, qubit, cbit):
+        """
+        Executes a measurement of a given qubit and stores it into a given classical
+        register. Also collapses the state of that qubit to 0 or 1 based upon the
+        value that is measured.
+
+        Args:
+            qubit (int) index of the qubit that is being read
+            cbit (int) index of the classic register that will store the value
+        
+        Returns:
+            The collapsed state (int).
+        """
+        # Bit mask to determine probabilities of 0 or 1 within the qubit structure.
         bit_mask = 1 << (self.num_qubits - qubit - 1)
 
         i0 = [i for i in range(2**self.num_qubits) if (i & bit_mask) == 0]
@@ -99,6 +119,7 @@ class QuantumCircuit:
             self.state /= np.sqrt(p1)
         
         self.cbits.set_bit(cbit, collapse)
+        return collapse
 
     def reset_qubit(self, collapsed_state, measurement_outcome, target_qubit):
         """
@@ -149,19 +170,22 @@ class QuantumCircuit:
         return full_op
 
     def __repr__(self):
-        return f"QuantumCircuit(num_qubits={self.num_qubits}, gates={len(self.gates)})"
+        gate_len = len([gate for gate in self.ops if "gate" in gate])
+        return f"QuantumCircuit(num_qubits={self.num_qubits}, num_cbits={self.cbits.__len__()}, gates={gate_len})"
 
     def __str__(self):
-        circuit_str = f"Quantum Circuit with {self.num_qubits} qubit(s)\n"
-        circuit_str += f"Number of gates: {len(self.gates)}\n"
-        if self.gates:
-            circuit_str += "Gate sequence:\n"
-            for i, (gate, targets) in enumerate(self.gates):
-                circuit_str += f"  {i+1}. {gate.name} on qubit(s) {targets}\n"
-        if self.measure_ops:
-            circuit_str += "Measurement sequence:\n"
-            for i, (qubit, cbit) in enumerate(self.measure_ops):
-                circuit_str += f"  {i+1}. qubit {qubit} stored in cbit{cbit}"
+        gates = [gate for gate in self.ops if "gate" in gate]
+        circuit_str = f"Quantum Circuit with {self.num_qubits} qubit(s) and {self.cbits.__len__()} classic bits\n"
+        circuit_str += f"Number of gates: {len(gates)}\n"
+        if self.ops:
+            circuit_str += "Simulation sequence:\n"
+            for i, op in enumerate(self.ops):
+                if op[0] == "gate":
+                    _, gate, targets = op
+                    circuit_str += f"  {i+1}. {gate.name} on qubit(s) {targets}\n"
+                elif op[0] == "measure":
+                    _, qubit, cbit = op
+                    circuit_str += f"  {i+1}. qubit {qubit} stored in cbit{cbit}"
         return circuit_str
 
 def main():
