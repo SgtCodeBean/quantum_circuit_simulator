@@ -17,7 +17,7 @@ This class manages an n-qubit quantum state and allows sequential application of
 unitary quantum gates to evolve the state.
 """
 class QuantumCircuit:
-    def __init__(self, num_qubits, num_cbits=0, enable_metrics=False):
+    def __init__(self, num_qubits, num_cbits=0, enable_metrics=False, num_shots=1024):
         if num_qubits < 1:
             raise ValueError("Number of qubits must be at least 1")
 
@@ -27,6 +27,8 @@ class QuantumCircuit:
         self.state[0] = 1.0
         self.ops = []
         self.cbits = CBit(num_bits=num_cbits)
+        self.num_shots = num_shots
+        self._measurements = {}
 
         # Simulator metrics tracking
         self.enable_metrics = enable_metrics
@@ -85,6 +87,11 @@ class QuantumCircuit:
                     self.metrics['measurement_count'] += 1
                     self.metrics['total_measurement_time'] += (end_time - start_time)
                     self.metrics['peak_memory_mb'] = max(self.metrics['peak_memory_mb'], mem_after)
+            
+            elif op[0] == "reset":
+                _, qubit = op
+
+                self.state = self._perform_reset(qubit)
 
         if self.enable_metrics:
             self.metrics['execution_end_time'] = time.perf_counter()
@@ -166,31 +173,54 @@ class QuantumCircuit:
             self.state /= np.sqrt(p1)
         
         self.cbits.set_bit(cbit, collapse)
+        self._measurements[qubit] = {
+            "outcome": collapse,
+            "cbit": cbit
+        }
         return collapse
 
-    def reset_qubit(self, collapsed_state, measurement_outcome, target_qubit):
+    def reset_qubit(self, qubit):
+        """
+        Adds a reset call to the operations queue, ops. Stores the
+        operation "reset" with the specified qubit so that it will be ran
+        when the execute() function is called.
+    
+        Args:
+            qubit(int): The qubit index that was measured.
+        """
+        
+        if qubit not in range(self.num_qubits):
+            raise ValueError(f"Qubit index {qubit} out of bounds!")
+        self.ops.append(("reset", qubit))
+        return self
+    
+    def _perform_reset(self, target_qubit):
         """
         Resets a qubit to the |0> state after it has been measured.
         This function takes the measurement outcome and the collapsed state,
         and applies a conditional X-gate to ensure the final state is |0>.
     
         Args:
-            collapsed_state (numpy.ndarray): The 2^n state vector after measurement.
-            measurement_outcome (int): The result of the measurement (0 or 1).
             target_qubit (int): The qubit index that was measured.
     
         Returns:
             numpy.ndarray: The new 2^n state vector after the reset.
         """
-    
+
+        measurement_record = self._measurements[target_qubit]
+        if measurement_record is not None:
+            measurement_outcome = measurement_record["outcome"]
+        else:
+            measurement_outcome = None
+        
         if measurement_outcome == 1:
             print(f"Measurement outcome was 1, applying X gate to reset qubit {target_qubit} to |0>.")
             X_matrix = np.array([[0, 1], [1, 0]], dtype=complex)
             X_full = self._get_full_operator(X_matrix, target_qubit)
-            final_state = np.dot(X_full, collapsed_state)
+            final_state = np.dot(X_full, self.state)
         else:
             print(f"Measurement Outcome was 0, no reset needed.")
-            final_state = collapsed_state
+            final_state = self.state
     
         return final_state
     
