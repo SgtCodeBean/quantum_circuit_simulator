@@ -93,6 +93,7 @@ class QuantumCircuit:
                 self.metrics['execution_end_time'] - self.metrics['execution_start_time']
             )
 
+        self.ops = []
         return self
 
     def get_state(self):
