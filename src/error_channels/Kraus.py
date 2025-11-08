@@ -14,7 +14,8 @@ class Kraus:
 
     # Verify the complete trace of the operators so that it covers full probability space.
     def _check_trace(self):
-        dim = self.kraus_ops.shape[0]
+        # Get dimension from the first operator (each operator is dim x dim)
+        dim = self.kraus_ops[0].shape[0]
         total = np.zeros((dim, dim), dtype=complex)
         for K in self.kraus_ops:
             total += K.conj().T @ K
@@ -29,9 +30,10 @@ class Kraus:
             result += K @ rho @ K.conj().T
         return result
     
-    # 
+    #
     def to_superoperator(self):
-        dim = self.kraus_ops.shape[0]
+        # Get dimension from the first operator
+        dim = self.kraus_ops[0].shape[0]
         E = np.zeros((dim**2, dim**2), dtype=complex)
         for K in self.kraus_ops:
             E += np.kron(K, K.conj())
