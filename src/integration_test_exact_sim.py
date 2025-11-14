@@ -50,6 +50,23 @@ def test_pauli_x_gate(registries):
     assert np.allclose(actual_state, expected_state), "X gate failed: |0⟩ did not become |1⟩"
 
 
+def test_pauli_z_gate(registries):
+    """Tests the Z gate on |1⟩."""
+    gate_reg, _ = registries
+    qc = QuantumCircuit(num_qubits=1)
+
+    # State |1⟩ -> Z -> -|1⟩
+    qc.add_gate(gate_reg.get('x'), targets=0)
+    qc.add_gate(gate_reg.get('z'), targets=0)
+    qc.execute()
+
+    actual_state = qc.get_state()
+    expected_state = np.array([0, -1], dtype=complex)
+
+    print(f"Pauli Z Test: Expected {s(expected_state)}, Got {s(actual_state)}")
+    assert np.allclose(actual_state, expected_state), "Z gate failed: |1⟩ did not become -|1⟩"
+
+
 def test_hadamard_gate(registries):
     """Tests the H gate on |0⟩."""
     gate_reg, _ = registries
