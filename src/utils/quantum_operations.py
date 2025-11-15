@@ -104,7 +104,7 @@ def _apply_channel_to_statevector(psi, channel, targets, n, rng, metrics_callbac
     return psi_out
 
 
-def _apply_channel_to_density(rho, channel, targets, n, metrics_callback=None):
+def _apply_channel_to_density(rho, channel, targets, n, metrics_callback):
     rho_new = np.zeros_like(rho)
     for K in channel.kraus_ops:
         K_full = _expand_kraus_operator(K, targets, n)
@@ -114,31 +114,31 @@ def _apply_channel_to_density(rho, channel, targets, n, metrics_callback=None):
 
 def _expand_kraus_operator(op, targets, n):
     """
-    Expand a k-qubit operator op to an n-qubit operator using Kronecker products.
-    targets: list of qubit indices that op acts on (must be contiguous)
+    Expand a k-qubit operator 'op' to n qubits for arbitrary (possibly non-contiguous) targets.
     """
-    k = int(np.log2(op.shape[0]))
-    targets = sorted(targets)
-    if targets != list(range(targets[0], targets[0] + k)):
-        print(f"{targets}, {k}")
-        raise ValueError("Operator must act on contiguous qubits.")
+    k = len(targets)
+    targets = list(targets)
 
-    result = None
-    t0 = targets[0]
-    inserted = False
+    # Build permutation that moves target axes to front
+    rest = [i for i in range(n) if i not in targets]
+    perm = targets + rest
 
-    for q in range(n):
-        if q == t0 and not inserted:
-            piece = op
-            inserted = True
-        elif q in targets:
-            continue
-        else:
-            piece = np.eye(2, dtype=complex)
+    # Build full operator using kronecker products of identities
+    I = np.eye(2, dtype=complex)
+    full = op
+    for _ in rest:
+        full = np.kron(full, I)
 
-        result = piece if result is None else np.kron(result, piece)
+    # Now permute operator axes back to correct positions.
+    # Create inverse permutation
+    inv = np.argsort(perm)
 
-    return result
+    # Reshape to 2n × 2n matrix
+    full = full.reshape([2]*n + [2]*n)
+    full = np.transpose(full, inv.tolist() + (inv+n).tolist())
+    full = full.reshape(2**n, 2**n)
+
+    return full
 
 def _get_channel_targets(channel, gate_targets, gate):
     """
