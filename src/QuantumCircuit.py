@@ -17,7 +17,7 @@ This class manages an n-qubit quantum state and allows sequential application of
 unitary quantum gates to evolve the state.
 """
 class QuantumCircuit:
-    def __init__(self, num_qubits, num_cbits=0, enable_metrics=False, num_shots=1024):
+    def __init__(self, num_qubits, num_cbits=0, density=False, enable_metrics=False, num_shots=1024):
         if num_qubits < 1:
             raise ValueError("Number of qubits must be at least 1")
 
@@ -119,6 +119,15 @@ class QuantumCircuit:
 
     def measure_probabilities(self):
         return np.abs(self.state)**2
+    
+    def print_cbit(self, cbit):
+        print(f"Classical Register {cbit}: {self.cbits.get_bit(cbit)}")
+
+    def get_cbit(self, cbit):
+        return self.cbits.get_bit(cbit)
+    
+    def get_cbits(self):
+        return self.cbits
 
     def measure(self, qubit, cbit):
         """
@@ -188,7 +197,7 @@ class QuantumCircuit:
         Args:
             qubit(int): The qubit index that was measured.
         """
-        
+
         if qubit not in range(self.num_qubits):
             raise ValueError(f"Qubit index {qubit} out of bounds!")
         self.ops.append(("reset", qubit))
@@ -457,6 +466,9 @@ class QuantumCircuit:
                 elif op[0] == "measure":
                     _, qubit, cbit = op
                     circuit_str += f"  {i+1}. qubit {qubit} stored in cbit{cbit}"
+                elif op[0] == "reset":
+                    _, qubit
+                    circuit_str += f"  {i+1}. qubit {qubit} reset to |0⟩."
         return circuit_str
 
 def main():

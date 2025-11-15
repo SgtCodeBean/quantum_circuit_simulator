@@ -1,8 +1,8 @@
 import numpy as np
 
 '''
-state - state vector
-gate - gate being applied to state vector
+state - state
+gate - gate being applied to state
 q - index of the qubit
 n - number of qubits
 
@@ -18,12 +18,12 @@ To apply the gate:
 4. flatten the tensor
 
 '''
-def apply_qubit(state, gate, targets, n):
+def apply_qubit(state, gate, targets, n, rng=np.random, metrics_callback=None):
     """
-    Apply an arbitrary k-qubit gate to an n-qubit state vector.
+    Apply an arbitrary k-qubit gate to an n-qubit state.
 
     Args:
-      state   : 1D complex ndarray of length 2**n (state vector |psi>)
+      state   : complex ndarray of length 2**n (state vector |psi> or density matrix |rho>)
       gate    : object with .matrix (2**k x 2**k) complex ndarray
       targets : list/tuple of k distinct qubit indices in [0, n-1]
                 Order matters: targets[0] is the most-significant qubit
@@ -38,8 +38,6 @@ def apply_qubit(state, gate, targets, n):
     elif not isinstance(targets, (list, tuple)):
         raise TypeError("targets must be an int or a list/tuple of ints")
     state = np.asarray(state, dtype=complex)
-    if state.ndim != 1 or state.size != 2**n:
-        raise ValueError(f"state must be 1D of length 2**n (got shape {state.shape}, n={n})")
 
     U = np.asarray(gate.matrix, dtype=complex)
     if U.ndim != 2 or U.shape[0] != U.shape[1]:
@@ -48,29 +46,133 @@ def apply_qubit(state, gate, targets, n):
     k = int(np.log2(dim))
     if 2**k != dim:
         raise ValueError("gate.matrix dimension must be 2**k")
-    if len(targets) != k:
-        raise ValueError(f"len(targets) ({len(targets)}) must equal gate qubit count k={k}")
-    if len(set(targets)) != k or any(t < 0 or t >= n for t in targets):
-        raise ValueError("targets must be distinct indices in [0, n-1]")
+    
+    is_statevector = False
+    psi = None
+    if state.ndim == 1:
+        is_statevector = True
+        psi = _apply_unitary_statevector(state, gate.matrix, targets, n, k)
+    else:
+        psi = _apply_unitary_density(state, gate.matrix, targets, n, k)
 
-    # 1) Reshape |psi> into an n-axis tensor of shape (2,)*n
-    psi = state.reshape((2,)*n)
+    if gate.noise:
+        
+        for channel in gate.noise:
+            channel_targets = _get_channel_targets(channel, targets, gate)
+            
+            # Apply channel to the full statevector
+            for target_set in channel_targets:
+                if is_statevector:
+                    psi = _apply_channel_to_statevector(
+                        psi, channel, target_set, n, rng, metrics_callback
+                    )
+                else:
+                    psi = _apply_channel_to_density(
+                        psi, channel, target_set, n
+                    )
+    
+    return psi
 
-    # 2) Permute so target axes come first (respecting the order in `targets`)
-    front = list(targets)
-    rest  = [i for i in range(n) if i not in targets]
-    perm  = front + rest
-    psi = np.transpose(psi, perm)
+def _apply_unitary_statevector(state, U, targets, n, k):
+    U_full = _expand_kraus_operator(U, targets, n)
+    return U_full @ state
 
-    # 3) Collapse front k axes to 2**k and the rest to 2**(n-k)
-    psi = psi.reshape(2**k, 2**(n-k))
+def _apply_unitary_density(rho, U, targets, n, k):
+    U_full = _expand_kraus_operator(U, targets, n)
+    return U_full @ rho @ U_full.conj().T
 
-    # 4) Apply the k-qubit gate on the left
-    psi = U @ psi
+def _apply_channel_to_statevector(psi, channel, targets, n, rng, metrics_callback):
+    probs = []
+    new_states = []
 
-    # 5) Reshape back to (2,)*n and undo the permutation
-    psi = psi.reshape((2,)*k + (2,)*(n-k))
-    inv_perm = np.argsort(perm)
-    psi = np.transpose(psi, inv_perm)
+    for _, K in enumerate(channel.kraus_ops):
+        K_full = _expand_kraus_operator(K, targets, n)
+        psi_new = K_full @ psi
+        p = np.vdot(psi_new, psi_new).real
+        probs.append(p)
+        new_states.append(psi_new)
 
-    return psi.reshape(-1)
+    probs = np.array(probs)
+    probs /= probs.sum()
+
+    i = rng.choice(len(probs), p=probs)
+    psi_out = new_states[i] / np.linalg.norm(new_states[i])
+
+    if metrics_callback:
+        metrics_callback(channel.name, kraus_index=i)
+
+    return psi_out
+
+
+def _apply_channel_to_density(rho, channel, targets, n, metrics_callback=None):
+    rho_new = np.zeros_like(rho)
+    for K in channel.kraus_ops:
+        K_full = _expand_kraus_operator(K, targets, n)
+        rho_new += K_full @ rho @ K_full.conj().T
+    return rho_new
+
+
+def _expand_kraus_operator(op, targets, n):
+    """
+    Expand a k-qubit operator op to an n-qubit operator using Kronecker products.
+    targets: list of qubit indices that op acts on (must be contiguous)
+    """
+    k = int(np.log2(op.shape[0]))
+    targets = sorted(targets)
+    if targets != list(range(targets[0], targets[0] + k)):
+        print(f"{targets}, {k}")
+        raise ValueError("Operator must act on contiguous qubits.")
+
+    result = None
+    t0 = targets[0]
+    inserted = False
+
+    for q in range(n):
+        if q == t0 and not inserted:
+            piece = op
+            inserted = True
+        elif q in targets:
+            continue
+        else:
+            piece = np.eye(2, dtype=complex)
+
+        result = piece if result is None else np.kron(result, piece)
+
+    return result
+
+def _get_channel_targets(channel, gate_targets, gate):
+    """
+    Determine which qubits a noise channel should act on.
+    
+    Logic:
+    - If channel.arity == gate.arity: Apply to entire gate subspace once
+    - If channel.arity == 1: Apply to each gate target qubit independently
+    - Otherwise: Not yet supported
+    
+    Args:
+        channel: Channel object
+        gate_targets: List of qubits the gate acts on
+        gate: Gate object
+    
+    Returns:
+        List of target sets, e.g., [[0], [1]] for 1q channel on 2q gate
+    """
+    if channel.arity == gate.arity:
+        # Channel matches gate arity - apply to entire gate subspace
+        return [gate_targets]
+    
+    elif channel.arity == 1:
+        # 1-qubit channel - apply independently to each gate target
+        return [[q] for q in gate_targets]
+    
+    else:
+        # Future: Could support other combinations like:
+        # - 2q channel on 3q gate (apply to first 2 qubits, then last 2, etc.)
+        # - 1q channel on specific subset of gate qubits
+        raise ValueError(
+            f"Channel {channel.name} has arity {channel.arity}, "
+            f"gate {gate.name} has arity {gate.arity}. "
+            f"Currently only support: "
+            f"(1) channel arity == gate arity, or "
+            f"(2) channel arity == 1 (applied to each gate qubit)."
+        )

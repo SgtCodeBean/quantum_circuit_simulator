@@ -157,3 +157,24 @@ def test_qubit_reset(registries):
 
   
 # add more tests...
+def test_noisy_cnot(registries):
+    gate_reg, error_reg = registries
+    qc = QuantumCircuit(num_qubits=2, num_cbits=2)
+    phase_error = error_reg.get_param('bit_phase_flip').instantiate(1)
+
+    noisy_cnot = Gate('ncx', gate_reg.get('cx').matrix, [phase_error])
+    qc.add_gate(gate_reg.get('x'), 0)
+    qc.add_gate(noisy_cnot, (0, 1))
+    qc.measure(1, 0)
+    qc.execute()
+
+    actual_value = qc.get_cbit(0)
+    actuale_state = qc.get_state()
+    expected_value = 0
+    expected_state = np.array([-1, 0, 0, 0], dtype=complex)
+
+    assert actual_value == expected_value, "noisy_cnot test failure"
+    assert np.allclose(actuale_state, expected_state), "noisy_cnot test failure: states are not equal"
+
+if __name__ == "__main__":
+    pytest.main([__file__])
