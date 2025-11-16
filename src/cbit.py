@@ -1,5 +1,8 @@
 import numpy as np
 
+"""
+
+"""
 class CBit():
 
     def __init__(self, num_bits: int):
@@ -16,6 +19,9 @@ class CBit():
         if index < 0 or index >= self.c_bits.size:
             raise IndexError(f"Classical register index {index} is out of bounds!")
         return self.c_bits[index]
+    
+    def get_bits(self):
+        return self.c_bits
     
     def reset(self):
         self.c_bits.fill(0)

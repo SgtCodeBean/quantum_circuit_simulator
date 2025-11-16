@@ -466,7 +466,6 @@ def test_sequential_measurements(registries):
     qc.add_gate(gate_reg.get('h'), targets=0)
     qc.add_gate(gate_reg.get('cx'), targets=[0, 1])
     qc.add_gate(gate_reg.get('cx'), targets=[0, 2])
-    qc.execute()
 
     qc.measure(qubit=0, cbit=0)
     qc.measure(qubit=1, cbit=1)

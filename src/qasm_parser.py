@@ -70,10 +70,10 @@ def parse_qasm_file(path: Union[str, Path],
         qc = transpile(qc, basis_gates=basis_gates, optimization_level=0)
     return _qc_to_ir(qc)
 
-def build_circuit_from_ir(ir: Dict[str, Any], reg: GateRegistry) -> QuantumCircuit:
+def build_circuit_from_ir(ir: Dict[str, Any], reg: GateRegistry, num_shots=1024, metrics=None, rng_seed=None) -> QuantumCircuit:
     n = int(ir["n_qubits"])
     m = int(ir.get("n_clbits", 0))
-    qc = QuantumCircuit(num_qubits=n, num_cbits=m)
+    qc = QuantumCircuit(num_qubits=n, num_cbits=m, num_shots=num_shots, enable_metrics=metrics, rng_seed=rng_seed)
 
     for op in ir["ops"]:
         name = op["name"]
