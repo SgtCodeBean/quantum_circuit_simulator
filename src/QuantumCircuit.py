@@ -79,9 +79,6 @@ class QuantumCircuit:
                 else:
                     tlist = list(targets)
 
-                if self.enable_metrics:
-                    start_time = time.perf_counter()
-
                 # 1) ideal unitary evolution
                 self.state = apply_qubit(self.state, gate, tlist, self.num_qubits)
 
