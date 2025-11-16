@@ -22,6 +22,7 @@ class QuantumCircuit:
             raise ValueError("Number of qubits must be at least 1")
 
         self.num_qubits = num_qubits
+        self.num_cbits = num_cbits
         # initialize state vector in Hilbert space: |00...0⟩
         self.state = np.zeros(2**num_qubits, dtype=complex)
         self.state[0] = 1.0
@@ -187,6 +188,12 @@ class QuantumCircuit:
             "cbit": cbit
         }
         return collapse
+
+    def reset(self, qubit: int):
+        if qubit not in range(self.num_qubits):
+            raise ValueError(f"Qubit index {qubit} out of bounds!")
+        self.ops.append(("reset", qubit))
+        return self
 
     def reset_qubit(self, qubit):
         """

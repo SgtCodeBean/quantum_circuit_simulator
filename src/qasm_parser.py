@@ -4,7 +4,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Union, Optional
 
 from numbers import Number
-from qiskit import QuantumCircuit, transpile
+from QuantumCircuit import QuantumCircuit
+from gates.registry import GateRegistry
+import qiskit as q
+from qiskit import transpile
 from qiskit.circuit.parameterexpression import ParameterExpression
 
 # --- helpers ---
@@ -20,7 +23,7 @@ def _param_to_float_if_numeric(p: Any) -> Any:
         return str(p)
     return p
 
-def _qc_to_ir(qc: QuantumCircuit) -> Dict[str, Any]:
+def _qc_to_ir(qc: q.QuantumCircuit) -> Dict[str, Any]:
     qubit_index  = {qb: i for i, qb in enumerate(qc.qubits)}
     clbit_index  = {cb: i for i, cb in enumerate(qc.clbits)}
     ops: List[Dict[str, Any]] = []
@@ -52,7 +55,7 @@ def parse_qasm_source(qasm: str,
     Parse OpenQASM 2.0 source to your IR. Optionally transpile to a basis
     (expands custom/opaque gates into standard gates your simulator supports).
     """
-    qc = QuantumCircuit.from_qasm_str(qasm)
+    qc = q.QuantumCircuit.from_qasm_str(qasm)
     if basis_gates:
         qc = transpile(qc, basis_gates=basis_gates, optimization_level=0)
     return _qc_to_ir(qc)
@@ -61,30 +64,44 @@ def parse_qasm_file(path: Union[str, Path],
                     basis_gates: Optional[List[str]] = None) -> Dict[str, Any]:
     """Load a .qasm file and return IR."""
     path = Path(path)
-    qc = QuantumCircuit.from_qasm_file(str(path))
+    qc = q.QuantumCircuit.from_qasm_file(str(path))
     if basis_gates:
         qc = transpile(qc, basis_gates=basis_gates, optimization_level=0)
     return _qc_to_ir(qc)
 
-# def create_quantum_circuit(ir: Dict[str, Any]) -> QuantumCircuit:
-#     """Create a Qiskit QuantumCircuit from the IR."""
-#     n_qubits = ir["n_qubits"]
-#     n_clbits = ir["n_clbits"]
-#     qc = QuantumCircuit(n_qubits, n_clbits)
-#
-#     for op in ir["ops"]:
-#         name   = op["name"]
-#         qargs  = op["qargs"]
-#         cargs  = op["cargs"]
-#         params = op["params"]
-#         condition = op["condition"]
-#
-#         if condition:
-#             qc.append(qc.to_gate(name=name, params=params).control(), qargs + cargs)
-#         else:
-#             getattr(qc, name)(*qargs, *cargs, *params)
-#
-#     return qc
+def build_circuit_from_ir(ir: Dict[str, Any], reg: GateRegistry) -> QuantumCircuit:
+    n = int(ir["n_qubits"])
+    m = int(ir.get("n_clbits", 0))
+    qc = QuantumCircuit(num_qubits=n, num_cbits=m)
+
+    for op in ir["ops"]:
+        name = op["name"]
+        qargs = op.get("qargs", []) or []
+        cargs = op.get("cargs", []) or []
+        params = op.get("params", []) or []
+
+        if name in reg.list():
+            gate = reg.get(name)
+            targets: List[int] = list(qargs)
+            qc.add_gate(gate, targets if len(targets) > 1 else targets[0])
+        elif name == "measure":
+            if len(qargs) == len(cargs) and len(qargs) > 0:
+                for qb, cb in zip(qargs, cargs):
+                    qc.measure(qb, cb)
+            else:
+                raise ValueError(f"Unsupported measure form: nargs={qargs}, params={params}")
+        elif name == "reset":
+            if len(qargs) == 1:
+                qc.reset(qargs[0])
+            elif len(qargs) > 1:
+                for qb in qargs:
+                    qc.reset(qb)
+            else:
+                raise ValueError("reset requires at least one qubit index")
+        else:
+            raise NotImplementedError(f"Op '{name}' not supported by backend (qargs={qargs}, cargs={cargs})")
+
+    return qc
 
 # Test
 if __name__ == "__main__":
@@ -133,3 +150,17 @@ if __name__ == "__main__":
     print("\nFrom QASM file:")
     print(json.dumps(file_ir, indent=2))
     assert file_ir == str_ir, "IR from string and file should match"
+
+    reg = GateRegistry(preload_defaults=True)
+    qc = build_circuit_from_ir(str_ir, reg)
+    print("\nReconstructed QuantumCircuit:")
+    print("Number of qubits: ", qc.num_qubits)
+    print("Number of classical bits: ", qc.num_cbits)
+    print("Initial state: ", qc.state)
+    for op in qc.ops:
+        if op[0] == "gate":
+            print(op[0], op[1].name, ", Target qubit: ", op[-1])
+        elif op[0] == "measure":
+            print(op[0], ", Qubit: ", op[1], ", Classical bit: ", op[2])
+        else:
+            print(op[0], op[-1])
