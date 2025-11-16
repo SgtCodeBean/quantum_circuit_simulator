@@ -2,7 +2,6 @@ from typing import Callable, Dict, List
 from utils.utils import Params, KrausSet
 from error_channels.Channel import Channel
 from error_channels.primitives import *
-from error_channels.BitFlipChannel import BitFlipChannel
 
 class ParamChannel:
     """
@@ -64,5 +63,7 @@ class ChannelRegistry:
     def _load_defaults(self):
         # Register param channels
         self.add_param(ParamChannel("bit_phase_flip", 1, lambda ps: pauli_y_channel(ps[0])))
-        self.add_param(ParamChannel("bit_flip", 1, lambda ps: BitFlipChannel(ps[0]).kraus))
+        self.add_param(ParamChannel("bit_flip", 1, lambda ps: pauli_x_channel(ps[0])))
+        self.add_param(ParamChannel("phase_flip", 1, lambda ps: pauli_z_channel(ps[0])))
+        self.add_param(ParamChannel("depolarizing", 1, lambda ps: depolarizing_channel(ps[0])))
         # TODO: add more default channels as needed

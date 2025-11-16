@@ -9,6 +9,7 @@ from gates.registry import GateRegistry
 import qiskit as q
 from qiskit import transpile
 from qiskit.circuit.parameterexpression import ParameterExpression
+import numpy as np
 
 # --- helpers ---
 def _param_to_float_if_numeric(p: Any) -> Any:
@@ -157,10 +158,14 @@ if __name__ == "__main__":
     print("Number of qubits: ", qc.num_qubits)
     print("Number of classical bits: ", qc.num_cbits)
     print("Initial state: ", qc.state)
-    for op in qc.ops:
-        if op[0] == "gate":
-            print(op[0], op[1].name, ", Target qubit: ", op[-1])
-        elif op[0] == "measure":
-            print(op[0], ", Qubit: ", op[1], ", Classical bit: ", op[2])
-        else:
-            print(op[0], op[-1])
+
+    rng = np.random.default_rng(456)
+
+    # 3) Execute with noise
+    qc.execute()
+
+    print("\nFinal noisy statevector:")
+    print(qc.get_state())
+
+    print("\nMeasurement probabilities (from final state):")
+    print(qc.measure_probabilities())

@@ -8,6 +8,9 @@ import time
 import psutil
 import os
 from collections import defaultdict
+from typing import Optional
+from error_channels.noise_model import NoiseModel
+from error_channels.default_noise import build_default_noise_model
 
 """
 QuantumCircuit class for building and simulating quantum circuits in Hilbert space
@@ -17,7 +20,11 @@ This class manages an n-qubit quantum state and allows sequential application of
 unitary quantum gates to evolve the state.
 """
 class QuantumCircuit:
-    def __init__(self, num_qubits, num_cbits=0, density=False, enable_metrics=False, num_shots=1024):
+    def __init__(self, num_qubits, num_cbits=0,
+                 enable_metrics=False,
+                 num_shots=1024,
+                 noise_model: Optional[NoiseModel] = build_default_noise_model(),
+                 rng: Optional[np.random.Generator] = None):
         if num_qubits < 1:
             raise ValueError("Number of qubits must be at least 1")
 
@@ -29,6 +36,8 @@ class QuantumCircuit:
         self.ops = []
         self.cbits = CBit(num_bits=num_cbits)
         self.num_shots = num_shots
+        self.noise_model = noise_model
+        self.rng = rng or np.random.default_rng()
         self._measurements = {}
 
         # Simulator metrics tracking
@@ -60,18 +69,37 @@ class QuantumCircuit:
             if op[0] == "gate":
                 _, gate, targets = op
 
+                # normalize targets to a list for noise model
+                if isinstance(targets, int):
+                    tlist = [targets]
+                else:
+                    tlist = list(targets)
+
                 if self.enable_metrics:
                     start_time = time.perf_counter()
-                    mem_before = self._get_memory_mb()
 
-                self.state = apply_qubit(self.state, gate, targets, self.num_qubits)
+                # 1) ideal unitary evolution
+                self.state = apply_qubit(self.state, gate, tlist, self.num_qubits)
+
+                # 2) optional noise after gate
+                if self.noise_model is not None:
+                    self.state = self.noise_model.apply_after_gate(
+                        state=self.state,
+                        gate_name=gate.name,  # "x", "h", "cx", "ccx", etc.
+                        targets=tlist,
+                        n_qubits=self.num_qubits,
+                        rng=self.rng,
+                        circuit=self,  # so record_channel_hit works
+                    )
 
                 if self.enable_metrics:
                     end_time = time.perf_counter()
-                    mem_after = self._get_memory_mb()
                     self.metrics['gate_count'] += 1
                     self.metrics['total_gate_time'] += (end_time - start_time)
-                    self.metrics['peak_memory_mb'] = max(self.metrics['peak_memory_mb'], mem_after)
+                    self.metrics['peak_memory_mb'] = max(
+                        self.metrics['peak_memory_mb'],
+                        self._get_memory_mb()
+                    )
 
             elif op[0] == "measure":
                 _, qubit, cbit = op
