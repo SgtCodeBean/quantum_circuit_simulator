@@ -66,4 +66,6 @@ class ChannelRegistry:
         self.add_param(ParamChannel("bit_flip", 1, lambda ps: pauli_x_channel(ps[0])))
         self.add_param(ParamChannel("phase_flip", 1, lambda ps: pauli_z_channel(ps[0])))
         self.add_param(ParamChannel("depolarizing", 1, lambda ps: depolarizing_channel(ps[0])))
+        self.add_param(ParamChannel("amplitude_damping", 1, lambda ps: amplitude_damping_channel(ps[0])))
+        self.add_param(ParamChannel("phase_damping", 1, lambda ps: phase_damping_channel(ps[0])))
         # TODO: add more default channels as needed

@@ -24,9 +24,7 @@ def build_default_noise_model() -> NoiseModel:
     per_gate_specs = {
         # X gates: pure bit-flip noise with smaller p
         "x": {"type": "bit_flip", "params": (0.01,), "scope": "per_qubit"},
-        # maybe keep Toffoli noiseless for now:
-        "ccx": None,  # explicitly no noise
-        # everything else falls back to default_spec
+        "ccx": None,
     }
 
     noise_model = NoiseModel(
