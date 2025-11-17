@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional
+from error_channels.Channel import Channel
 import numpy as np
 
 def _fro_norm_sq(x: np.ndarray) -> float:
@@ -148,6 +149,42 @@ class NoiseModel:
         self.default_spec = default_spec or {}
         self.per_gate_specs = per_gate_specs or {}
 
+    def _build_product_channel_for_gate(self, spec: Dict[str, Any], k: int) -> Channel:
+        """
+        Build a k-qubit product channel from a 1-qubit ParamChannel on the fly.
+        Does NOT register the channel; returns a temporary Channel instance.
+        """
+        ch_type = spec["type"]       # e.g. "depolarizing"
+        params = spec.get("params", ())  # tuple, e.g. (0.006,)
+
+        base_pch = self.chan_reg.get_param(ch_type)  # ParamChannel
+
+        if base_pch.arity == k:
+            # Already a k-qubit parametric channel; just instantiate
+            return base_pch.instantiate(*params)
+
+        if base_pch.arity != 1:
+            raise ValueError(
+                f"Cannot auto-lift channel '{ch_type}': expected arity 1 or {k}, "
+                f"got {base_pch.arity}"
+            )
+
+        # --- Get 1-qubit Kraus ops from the *instantiated* channel ---
+        oneq_channel = base_pch.instantiate(*params)    # Channel
+        base_kraus = oneq_channel.kraus_ops            # list of 2x2 matrices
+
+        # --- Build k-qubit product Kraus set by repeated ⊗ with base_kraus ---
+        lifted = [np.array([[1]], dtype=complex)]      # start with scalar identity
+        for _ in range(k):
+            new_lifted = []
+            for L in lifted:
+                for K in base_kraus:
+                    new_lifted.append(np.kron(L, K))
+            lifted = new_lifted
+
+        temp_name = f"{ch_type}_product_{k}q_temp"
+        return Channel(temp_name, lifted)
+
     def _spec_for_gate(self, gate_name: str) -> Optional[Dict[str, Any]]:
         if gate_name in self.per_gate_specs:
             return self.per_gate_specs[gate_name]
@@ -178,16 +215,17 @@ class NoiseModel:
         if rng is None:
             rng = np.random.default_rng()
 
-        # 1) Build the channel (assume 1-qubit for now)
-        ch = self._build_channel(spec)
+        k_gate = len(targets)
 
-        # 2) Apply it according to scope
         if scope == "per_qubit":
+            # Use the underlying channel "as is" on each qubit independently
+            ch = self._build_channel(spec)  # expects correct arity (typically 1)
             for q in targets:
                 state = apply_channel_to_qubit(state, ch, q, n_qubits, rng, circuit)
             return state
         elif scope == "per_gate":
-            # for future multi-qubit channel support
+            # Build a k-qubit product channel automatically if base is 1q
+            ch = self._build_product_channel_for_gate(spec, k=k_gate)
             state = apply_kqubit_channel(state, ch, targets, n_qubits, rng, circuit)
             return state
         else:

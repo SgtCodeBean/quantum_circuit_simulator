@@ -3,34 +3,53 @@ from error_channels.noise_model import NoiseModel
 
 def build_default_noise_model() -> NoiseModel:
     """
-    Build a default NoiseModel with:
-      - depolarizing noise p=0.05 on all gates by default
-      - bit-flip noise p=0.01 on X gates
-      - no noise on Toffoli (ccx) gates
+    Reasonable default noise model:
+
+      - Single-qubit gates: mild depolarizing noise (p_1q)
+      - Multi-qubit gates (cx, ccx): stronger depolarizing noise (p_2q, p_3q)
+      - Scope:
+          * single-qubit: "per_qubit" (each target independently)
+          * multi-qubit:  "per_gate"  (correlated error on all targets)
+
+      You can tweak p_1q, p_2q, p_3q to make the simulator "noisier" or "cleaner".
     """
-    # 1) Build the channel registry with your default param channels
     chan_reg = ChannelRegistry(preload_defaults=True)
 
-    # 2) Define a default noise spec:
-    #    - apply a small depolarizing noise p=0.05
-    #    - scope "per_qubit" = apply to each target qubit of the gate
+    # Global knobs
+    p_1q = 0.002   # single-qubit depolarizing probability
+    p_2q = 0.006   # two-qubit gate depolarizing probability
+    p_3q = 0.010   # three-qubit gate depolarizing probability
+
+    # Default: all gates get mild single-qubit depolarizing noise, per target qubit
     default_spec = {
         "type": "depolarizing",
-        "params": (0.05,),      # p = 0.05
+        "params": (p_1q,),
         "scope": "per_qubit",
     }
 
-    # 3) Optionally override noise for specific gates
+    # Override for specific gates
     per_gate_specs = {
-        # X gates: pure bit-flip noise with smaller p
-        "x": {"type": "bit_flip", "params": (0.01,), "scope": "per_qubit"},
-        "ccx": None,
+        "x":  {"type": "depolarizing", "params": (p_1q,), "scope": "per_qubit"},
+        "y":  {"type": "depolarizing", "params": (p_1q,), "scope": "per_qubit"},
+        "z":  {"type": "depolarizing", "params": (p_1q,), "scope": "per_qubit"},
+        "h":  {"type": "depolarizing", "params": (p_1q,), "scope": "per_qubit"},
+        "s":  {"type": "phase_damping", "params": (p_1q,), "scope": "per_qubit"},
+
+        # Entangling gates: apply depolarizing noise to *all qubits at once*
+        "cx": {
+            "type": "depolarizing",
+            "params": (p_2q,),
+            "scope": "per_gate",
+        },
+        "ccx": {
+            "type": "depolarizing",
+            "params": (p_3q,),
+            "scope": "per_gate",
+        },
     }
 
-    noise_model = NoiseModel(
+    return NoiseModel(
         channel_registry=chan_reg,
         default_spec=default_spec,
         per_gate_specs=per_gate_specs,
     )
-
-    return noise_model

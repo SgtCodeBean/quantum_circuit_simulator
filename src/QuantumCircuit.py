@@ -5,9 +5,6 @@ sys.path.append('..')
 from gates.registry import GateRegistry
 from cbit import CBit
 import time
-import psutil
-import os
-from collections import defaultdict
 from typing import Optional
 from error_channels.noise_model import NoiseModel
 from error_channels.default_noise import build_default_noise_model
@@ -39,15 +36,23 @@ class QuantumCircuit:
         self.ops = []
         self.cbits = CBit(num_bits=num_cbits)
         self.num_shots = num_shots
-        self.noise_model = noise_model
+        self.noise_model = None
+        self.set_noise_model(noise_model)
         self.rng = rng or np.random.default_rng()
-        self._measurements = {}
         if rng_seed is not None:
             np.random.seed(rng_seed)
+
+        self._measurements = {}
 
         # Simulator metrics and results tracking
         self.metrics = CircuitMetrics(enabled=enable_metrics)
         self.results = ResultManager()
+
+    def set_noise_model(self, noise_model: NoiseModel):
+        self.noise_model = noise_model
+
+    def set_rng(self, rng: np.random.Generator):
+        self.rng = rng
 
     def add_gate(self, gate, targets):
         U = np.array(gate.matrix, dtype=complex)
@@ -203,7 +208,7 @@ class QuantumCircuit:
         return self.cbits.get_bit(cbit)
     
     def get_cbits(self):
-        return self.cbits.get_bits()
+        return self.cbits
 
     def set_shots(self, num_shots):
         self.num_shots = num_shots

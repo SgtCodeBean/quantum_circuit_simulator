@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 import sys
+from qasm_parser import parse_qasm_source, build_circuit_from_ir
+from error_channels.default_noise import build_default_noise_model
 
 sys.path.append('')
 
@@ -9,6 +11,7 @@ try:
     from gates.registry import GateRegistry
     from error_channels.ChannelRegistry import ChannelRegistry
     from gates.registry import Gate
+    from error_channels.noise_model import NoiseModel
 except ImportError:
     print("Error: Could not import simulator components.")
     print("Please ensure 'src' is in the Python path and contains:")
@@ -37,7 +40,7 @@ def s(state_vector):
 def test_pauli_x_gate(registries):
     """Tests the X gate on |0⟩."""
     gate_reg, _ = registries
-    qc = QuantumCircuit(num_qubits=1)
+    qc = QuantumCircuit(num_qubits=1, noise_model=None)
 
     qc.add_gate(gate_reg.get('x'), targets=0)
     qc.execute()
@@ -52,7 +55,7 @@ def test_pauli_x_gate(registries):
 def test_pauli_z_gate(registries):
     """Tests the Z gate on |1⟩."""
     gate_reg, _ = registries
-    qc = QuantumCircuit(num_qubits=1)
+    qc = QuantumCircuit(num_qubits=1, noise_model=None)
 
     qc.add_gate(gate_reg.get('x'), targets=0)
     qc.add_gate(gate_reg.get('z'), targets=0)
@@ -68,7 +71,7 @@ def test_pauli_z_gate(registries):
 def test_hadamard_gate(registries):
     """Tests the H gate on |0⟩."""
     gate_reg, _ = registries
-    qc = QuantumCircuit(num_qubits=1)
+    qc = QuantumCircuit(num_qubits=1, noise_model=None)
 
     qc.add_gate(gate_reg.get('h'), targets=0)
     qc.execute()
@@ -84,7 +87,7 @@ def test_cnot_gate(registries):
     """Tests the CNOT gate on all 4 computational basis states."""
     gate_reg, _ = registries
 
-    qc = QuantumCircuit(num_qubits=2)
+    qc = QuantumCircuit(num_qubits=2, noise_model=None)
     qc.add_gate(gate_reg.get('cx'), targets=[0, 1])
     qc.execute()
     assert np.allclose(qc.get_state(), [1, 0, 0, 0]), "CNOT failed on |00⟩"
@@ -112,7 +115,7 @@ def test_cnot_gate(registries):
 def test_phase_gate(registries):
     """Tests the S (phase) gate on |+⟩."""
     gate_reg, _ = registries
-    qc = QuantumCircuit(num_qubits=1)
+    qc = QuantumCircuit(num_qubits=1, noise_model=None)
 
     qc.add_gate(gate_reg.get('h'), targets=0)
     qc.add_gate(gate_reg.get('s'), targets=0)
@@ -124,11 +127,10 @@ def test_phase_gate(registries):
     print(f"S Test: Expected {s(expected_state)}, Got {s(actual_state)}")
     assert np.allclose(actual_state, expected_state), "S gate failed: |+⟩ did not become (|0⟩ + i|1⟩)/√2"
 
-
 def test_qubit_reset(registries):
     """Tests that reset_qubit correctly resets to |0⟩."""
     gate_reg, _ = registries
-    qc = QuantumCircuit(num_qubits=1, num_cbits=1)
+    qc = QuantumCircuit(num_qubits=1, num_cbits=1, noise_model=None)
 
     qc.add_gate(gate_reg.get('x'), targets=0)
     qc.execute()
@@ -144,26 +146,79 @@ def test_qubit_reset(registries):
     print(f"Reset Test: Expected {s(expected_state)}, Got {s(actual_state)}")
     assert np.allclose(actual_state, expected_state), "reset_qubit failed"
 
-  
 # add more tests...
 def test_noisy_cnot(registries):
-    gate_reg, error_reg = registries
-    qc = QuantumCircuit(num_qubits=2, num_cbits=2)
-    phase_error = error_reg.get_param('bit_phase_flip').instantiate(1)
+    gate_reg, channel_reg = registries
 
-    noisy_cnot = Gate('ncx', gate_reg.get('cx').matrix, [phase_error])
-    qc.add_gate(gate_reg.get('x'), 0)
-    qc.add_gate(noisy_cnot, (0, 1))
+    noise = NoiseModel(
+        channel_registry=channel_reg,
+        default_spec=None,
+        per_gate_specs={
+            "cx": {
+                "type": "bit_phase_flip",
+                "params": (1.0,),
+                "scope": "per_qubit"
+            }
+        }
+    )
+
+    qc = QuantumCircuit(num_qubits=2, num_cbits=1)
+    qc.set_noise_model(noise)
+    qc.set_rng(np.random.default_rng(123))
+
+    qc.add_gate(gate_reg.get("x"), 0)
+    qc.add_gate(gate_reg.get("cx"), (0, 1))
     qc.measure(1, 0)
+
     qc.execute()
 
-    actual_value = qc.get_cbit(0)
-    actuale_state = qc.get_state()
-    expected_value = 0
-    expected_state = np.array([-1, 0, 0, 0], dtype=complex)
+    assert qc.get_cbit(0) == 0
 
-    assert actual_value == expected_value, "noisy_cnot test failure"
-    assert np.allclose(actuale_state, expected_state), "noisy_cnot test failure: states are not equal"
+    expected_state = np.array([-1, 0, 0, 0], complex)
+    assert np.allclose(qc.get_state(), expected_state)
+
+
+def test_noisy_toffoli(registries):
+    gate_reg, channel_reg = registries
+
+    # Noise model: Toffoli ("ccx") always suffers a bit flip (X) on each target qubit
+    noise = NoiseModel(
+        channel_registry=channel_reg,
+        default_spec=None,
+        per_gate_specs={
+            "ccx": {
+                "type": "bit_flip",   # uses your pauli_x_channel(p)
+                "params": (1.0,),     # p = 1 → always flip
+                "scope": "per_qubit"  # apply 1q channel on each qubit in targets
+            }
+        }
+    )
+
+    qc = QuantumCircuit(num_qubits=3, num_cbits=1)
+    qc.set_noise_model(noise)
+    qc.set_rng(np.random.default_rng(123))
+
+    # Prepare |110⟩:
+    # assuming q0 is the most significant bit, q2 is least significant
+    qc.add_gate(gate_reg.get("x"), 0)  # |100⟩
+    qc.add_gate(gate_reg.get("x"), 1)  # |110⟩
+
+    # Ideal Toffoli (ccx q0, q1, q2): |110⟩ → |111⟩
+    qc.add_gate(gate_reg.get("ccx"), (0, 1, 2))
+
+    # Measure target qubit into classical bit 0
+    qc.measure(2, 0)
+
+    qc.execute()
+
+    # After Toffoli, state is |111⟩, then noise bit-flips all three qubits:
+    # X⊗X⊗X |111⟩ = |000⟩
+    # So we expect qubit 2 = 0 and final state = |000⟩
+    assert qc.get_cbit(0) == 0
+
+    expected_state = np.zeros(2**3, dtype=complex)
+    expected_state[0] = 1.0  # |000⟩
+    assert np.allclose(qc.get_state(), expected_state)
 
 # ==========================================
 # BELL STATES AND ENTANGLEMENT TESTS
@@ -807,6 +862,122 @@ def test_quantum_teleportation_protocol(registries):
 
     assert np.allclose(np.sum(np.abs(full_state)**2), 1.0), "Teleportation broke normalization"
 
+
+def test_qasm_end_to_end_with_noise():
+    # 1) QASM string using only gates in your basis/registry
+    qasm_str = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[3];
+    creg c[3];
+
+    // Prepare some superposition and entanglement
+    h q[0];
+    s q[1];
+
+    x q[2];
+    y q[0];
+    z q[1];
+
+    cx q[0], q[1];
+    ccx q[0], q[1], q[2];
+
+    measure q -> c;
+    """
+
+    # 2) Choose basis gates that your simulator implements
+    basis = [
+        "x", "y", "z",
+        "h", "s",
+        "cx", "ccx",
+        "measure",
+    ]
+
+    # 3) Parse QASM → IR
+    ir = parse_qasm_source(qasm_str, basis_gates=basis)
+
+    # 4) Build gate registry and QuantumCircuit from IR
+    gate_reg = GateRegistry(preload_defaults=True)
+    qc: QuantumCircuit = build_circuit_from_ir(ir, gate_reg)
+
+    # 5) Attach noise model + RNG
+    noise = build_default_noise_model()
+    qc.set_noise_model(noise)
+    qc.set_rng(np.random.default_rng(123))
+
+    # 6) Execute the circuit
+    qc.execute()
+
+    # 7) Basic sanity checks
+
+    # (a) Statevector has correct length and norm ≈ 1
+    state = qc.get_state()
+    assert state.shape == (2 ** qc.num_qubits,), "Statevector has wrong dimension"
+    norm = np.linalg.norm(state)
+    assert np.isclose(norm, 1.0, atol=1e-10), f"Final state not normalized (‖ψ‖={norm})"
+
+    # (b) Measurement results are in {0,1} for each classical bit
+    cbits = qc.get_cbits()
+    for i in range(qc.num_cbits):
+        v = cbits.get_bit(i)
+        assert v in (0, 1), f"Classical bit {i} has invalid value {v}"
+
+    # (c) Probabilities sum to 1
+    probs = qc.measure_probabilities()
+    assert np.isclose(probs.sum(), 1.0, atol=1e-10), "Probabilities do not sum to 1"
+
+def test_qasm_end_to_end_with_noise_vs_ideal():
+    qasm_str = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[3];
+    creg c[3];
+
+    h q[0];
+    s q[1];
+    x q[2];
+    y q[0];
+    z q[1];
+    cx q[0], q[1];
+    ccx q[0], q[1], q[2];
+    measure q -> c;
+    """
+
+    basis = ["x", "y", "z", "h", "s", "cx", "ccx", "measure"]
+
+    ir = parse_qasm_source(qasm_str, basis_gates=basis)
+    gate_reg = GateRegistry(preload_defaults=True)
+
+    # --- ideal circuit (no noise) ---
+    qc_ideal = build_circuit_from_ir(ir, gate_reg)
+    qc_ideal.set_noise_model(None)
+    qc_ideal.set_rng(np.random.default_rng(123))
+    qc_ideal.execute()
+    ideal_state = qc_ideal.get_state()
+
+    # --- noisy circuit (exaggerated noise to make difference clear) ---
+    noise = NoiseModel(
+        channel_registry=ChannelRegistry(preload_defaults=True),
+        default_spec={
+            "type": "depolarizing",
+            "params": (0.5,),
+            "scope": "per_qubit",
+        },
+        per_gate_specs={}
+    )
+    qc_noisy = build_circuit_from_ir(ir, gate_reg)
+    qc_noisy.set_noise_model(noise)
+    qc_noisy.set_rng(np.random.default_rng(123))
+    qc_noisy.execute()
+    noisy_state = qc_noisy.get_state()
+
+    # basic sanity
+    assert noisy_state.shape == ideal_state.shape
+    assert np.isclose(np.linalg.norm(noisy_state), 1.0, atol=1e-10)
+
+    # **key assertion**: noisy != ideal
+    assert not np.allclose(noisy_state, ideal_state, atol=1e-2), \
+        "Noisy state is identical to ideal – noise may not be applied."
 
 if __name__ == "__main__":
     print("Running comprehensive integration tests for exact simulator...")
