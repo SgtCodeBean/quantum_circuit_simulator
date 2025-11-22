@@ -1,5 +1,5 @@
 import numpy as np
-from Channel.py import Channel
+from error_channels.Channel import Channel
 
 I2 = np.eye(2, dtype=complex)
 X = np.array([[0, 1], [1, 0]])

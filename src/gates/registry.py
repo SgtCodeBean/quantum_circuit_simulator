@@ -5,7 +5,7 @@ import numpy as np
 from error_channels.Channel import Channel
 
 class Gate:
-    def __init__(self, name, matrix, noise=None):
+    def __init__(self, name, matrix):
         self.name = name
         self.matrix = np.array(matrix, dtype=complex)
         if self.matrix.shape[0] != self.matrix.shape[1]:
@@ -18,45 +18,15 @@ class Gate:
         self.dim = dim
         self.arity = int(np.log2(dim))
 
-        if noise is None:
-            self.noise = []
-        elif isinstance(noise, Channel):
-            self.noise = [noise]
-        else:
-            self.noise = list(noise)
-
     
-    def apply(self, state, rng=None):
-        state = np.array(state, dtype=complex)
+    def apply(self, state):
+        """Optional helper: pure unitary action on full-arity state."""
+        state = np.asarray(state, dtype=complex)
         n = self.arity
-
-        # condition if no noise applied to the gate
-        if not self.noise:
-            if state.shape in [(2**n,), (2**n, 1)]:
-                return self.matrix @ state
-            elif state.shape == (2**n, 2**n):
-                return self.matrix @ state @ self.matrix.conj().T
-            raise ValueError("Input must be a size-matched state vector or density matrix")
-        
-        # condition if noisey channels are applied to the gate (use density matrix)
         if state.shape in [(2**n,), (2**n, 1)]:
-            rng = np.random.default_rng() if rng is None else rng
-            psi = self.matrix @ state
-            # sequentially apply channels
-            for ch in self.noise:
-                if ch.dim != self.dim:
-                    raise ValueError(f"Noise channel dim {ch.dim} != gate dim {self.dim}")
-                psi = ch.apply_statevector(psi, rng=rng)
-            return psi  # still a statevector (stochastic trajectory)
-           
+            return self.matrix @ state
         elif state.shape == (2**n, 2**n):
-            rho = self.matrix @ state @ self.matrix.conj().T
-            for ch in self.noise:
-                if ch.dim != self.dim:
-                    raise ValueError(f"Noise channel dim {ch.dim} != gate dim {self.dim}")
-                rho = ch.apply_density(rho)
-            return rho
-        
+            return self.matrix @ state @ self.matrix.conj().T
         raise ValueError("Input must be a size-matched state vector or density matrix")
 
     def __str__(self):

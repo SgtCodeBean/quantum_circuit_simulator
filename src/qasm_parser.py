@@ -9,6 +9,7 @@ from gates.registry import GateRegistry
 import qiskit as q
 from qiskit import transpile
 from qiskit.circuit.parameterexpression import ParameterExpression
+import numpy as np
 
 # --- helpers ---
 def _param_to_float_if_numeric(p: Any) -> Any:
@@ -69,10 +70,10 @@ def parse_qasm_file(path: Union[str, Path],
         qc = transpile(qc, basis_gates=basis_gates, optimization_level=0)
     return _qc_to_ir(qc)
 
-def build_circuit_from_ir(ir: Dict[str, Any], reg: GateRegistry) -> QuantumCircuit:
+def build_circuit_from_ir(ir: Dict[str, Any], reg: GateRegistry, num_shots=1024, metrics=None, rng_seed=None) -> QuantumCircuit:
     n = int(ir["n_qubits"])
     m = int(ir.get("n_clbits", 0))
-    qc = QuantumCircuit(num_qubits=n, num_cbits=m)
+    qc = QuantumCircuit(num_qubits=n, num_cbits=m, num_shots=num_shots, enable_metrics=metrics, rng_seed=rng_seed)
 
     for op in ir["ops"]:
         name = op["name"]
@@ -157,10 +158,14 @@ if __name__ == "__main__":
     print("Number of qubits: ", qc.num_qubits)
     print("Number of classical bits: ", qc.num_cbits)
     print("Initial state: ", qc.state)
-    for op in qc.ops:
-        if op[0] == "gate":
-            print(op[0], op[1].name, ", Target qubit: ", op[-1])
-        elif op[0] == "measure":
-            print(op[0], ", Qubit: ", op[1], ", Classical bit: ", op[2])
-        else:
-            print(op[0], op[-1])
+
+    rng = np.random.default_rng(456)
+
+    # 3) Execute with noise
+    qc.execute()
+
+    print("\nFinal noisy statevector:")
+    print(qc.get_state())
+
+    print("\nMeasurement probabilities (from final state):")
+    print(qc.measure_probabilities())

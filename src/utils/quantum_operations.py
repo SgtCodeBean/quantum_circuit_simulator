@@ -18,25 +18,16 @@ To apply the gate:
 4. flatten the tensor
 
 '''
-def apply_qubit(state, gate, targets, n, rng=np.random, metrics_callback=None):
+def apply_qubit(state, gate, targets, n):
     """
-    Apply an arbitrary k-qubit gate to an n-qubit state.
-
-    Args:
-      state   : complex ndarray of length 2**n (state vector |psi> or density matrix |rho>)
-      gate    : object with .matrix (2**k x 2**k) complex ndarray
-      targets : list/tuple of k distinct qubit indices in [0, n-1]
-                Order matters: targets[0] is the most-significant qubit
-                in the gate's basis ordering |q0 q1 ... q_{k-1}>
-      n       : total number of qubits
-
-    Returns:
-      New state vector (1D ndarray, length 2**n)
+    Apply an arbitrary k-qubit gate to an n-qubit state (statevector or density matrix).
+    Noise-free: pure unitary embedding.
     """
     if isinstance(targets, int):
         targets = [targets]
     elif not isinstance(targets, (list, tuple)):
         raise TypeError("targets must be an int or a list/tuple of ints")
+
     state = np.asarray(state, dtype=complex)
 
     U = np.asarray(gate.matrix, dtype=complex)
@@ -46,32 +37,22 @@ def apply_qubit(state, gate, targets, n, rng=np.random, metrics_callback=None):
     k = int(np.log2(dim))
     if 2**k != dim:
         raise ValueError("gate.matrix dimension must be 2**k")
-    
-    is_statevector = False
-    psi = None
-    if state.ndim == 1:
-        is_statevector = True
-        psi = _apply_unitary_statevector(state, gate.matrix, targets, n, k)
-    else:
-        psi = _apply_unitary_density(state, gate.matrix, targets, n, k)
 
-    if gate.noise:
-        
-        for channel in gate.noise:
-            channel_targets = _get_channel_targets(channel, targets, gate)
-            
-            # Apply channel to the full statevector
-            for target_set in channel_targets:
-                if is_statevector:
-                    psi = _apply_channel_to_statevector(
-                        psi, channel, target_set, n, rng, metrics_callback
-                    )
-                else:
-                    psi = _apply_channel_to_density(
-                        psi, channel, target_set, n
-                    )
-    
-    return psi
+    # sanity check targets vs gate arity
+    if len(targets) != k:
+        raise ValueError(f"len(targets)={len(targets)} must equal gate arity k={k}")
+
+    if state.ndim == 1:
+        # statevector case
+        return _apply_unitary_statevector(state, U, targets, n, k)
+    elif state.ndim == 2 and state.shape == (2**n, 2**n):
+        # density matrix case
+        return _apply_unitary_density(state, U, targets, n, k)
+    else:
+        raise ValueError(
+            f"State has shape {state.shape}, expected vector (2**{n},) "
+            f"or density matrix (2**{n}, 2**{n})."
+        )
 
 def _apply_unitary_statevector(state, U, targets, n, k):
     U_full = _expand_kraus_operator(U, targets, n)
