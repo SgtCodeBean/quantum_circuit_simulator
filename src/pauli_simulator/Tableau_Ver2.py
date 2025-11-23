@@ -286,4 +286,9 @@ class Tableau:
         t._x = self._x.copy()
         t._z = self._z.copy()
         t._r = self._r.copy()
+        t._enable_metrics = self._enable_metrics
+        t._metrics = None
+        if self._enable_metrics and self._metrics:
+            import copy
+            t._metrics = copy.deepcopy(self._metrics)
         return t
