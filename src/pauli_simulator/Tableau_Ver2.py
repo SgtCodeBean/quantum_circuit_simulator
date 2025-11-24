@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 """
-Optimized Tableau class for efficient Clifford circuit simulation.
+Corrected Tableau class for efficient Clifford circuit simulation.
 (Measurement logic has been corrected)
 """
 
@@ -132,8 +132,6 @@ class Tableau:
         if self._enable_metrics:
             self._record_gate('z', time.perf_counter() - start)
 
-    # --- Corrected Measurement Logic (from Aaronson-Gottesman paper) ---
-
     def measure(self, q):
         """
         Measure qubit q in the Z basis.
@@ -181,10 +179,17 @@ class Tableau:
                     x2 = temp_x
                     z2 = temp_z
 
-                    g = (x1 & z1) * (x2 ^ z2) + \
-                        (x2 & z2) * (x1 ^ z1 ^ 1) + \
-                        (x1 & z2) * (x2 & z1)
+                    g = np.zeros(self.n, dtype=int)
 
+                    mask_y = (x1 == 1) & (z1 == 1)
+                    g[mask_y] = z2[mask_y].astype(int) - x2[mask_y].astype(int)
+
+                    mask_x = (x1 == 1) & (z1 == 0)
+                    g[mask_x] = z2[mask_x].astype(int) * (2 * x2[mask_x].astype(int) - 1)
+
+                    mask_z = (x1 == 0) & (z1 == 1)
+                    g[mask_z] = x2[mask_z].astype(int) * (1 - 2 * z2[mask_z].astype(int))
+                    
                     g_sum = (2 * self._r[i + self.n] + 2 * temp_r + np.sum(g)) % 4
                     temp_r = g_sum >> 1
                     temp_x ^= x1
@@ -269,10 +274,20 @@ class Tableau:
         x2 = self._x[h]
         z2 = self._z[h]
 
-        g = (x1 & z1) * (x2 ^ z2) + \
-            (x2 & z2) * (x1 ^ z1 ^ 1) + \
-            (x1 & z2) * (x2 & z1)
+        g = np.zeros(self.n, dtype=int)
 
+        # Case: x1=1, z1=1 (Pauli Y) -> g = z2 - x2
+        mask_y = (x1 == 1) & (z1 == 1)
+        g[mask_y] = z2[mask_y].astype(int) - x2[mask_y].astype(int)
+
+        # Case: x1=1, z1=0 (Pauli X) -> g = z2(2x2 - 1)
+        mask_x = (x1 == 1) & (z1 == 0)
+        g[mask_x] = z2[mask_x].astype(int) * (2 * x2[mask_x].astype(int) - 1)
+
+        # Case: x1=0, z1=1 (Pauli Z) -> g = x2(1 - 2z2)
+        mask_z = (x1 == 0) & (z1 == 1)
+        g[mask_z] = x2[mask_z].astype(int) * (1 - 2 * z2[mask_z].astype(int))
+        
         g_sum = (2 * self._r[i] + 2 * self._r[h] + np.sum(g)) % 4
 
         self._r[h] = g_sum >> 1
