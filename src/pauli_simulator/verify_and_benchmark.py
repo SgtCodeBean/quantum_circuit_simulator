@@ -79,6 +79,38 @@ def verify_single_qubit_gates():
     return tests_passed == tests_total
 
 
+def verify_cnot_gate():
+    tests_passed = 0
+    tests_total = 0
+
+    # Test 1: CNOT on |01> -> |01> (Control 0, Target 1)
+    tests_total += 1
+    t = Tableau(2)
+    t.x(1)
+    t.cx(0, 1)
+    m = ''.join((str(t.measure(0)), str(t.measure(1))))
+    if m == '01':
+        print("✓ CNOT|01⟩ -> |01⟩ passed")
+        tests_passed += 1
+    else:
+        print(f"✗ CNOT|01⟩ failed: got {m}")
+
+    # Test 2: CNOT on |10> -> |11> (Control 0, Target 1)
+    tests_total += 1
+    t = Tableau(2)
+    t.x(0)
+    t.cx(0, 1)
+    m = ''.join((str(t.measure(0)), str(t.measure(1))))
+    if m == '11':
+        print("✓ CNOT|10⟩ -> |11⟩ passed")
+        tests_passed += 1
+    else:
+        print(f"✗ CNOT|10⟩ failed: got {m}")
+
+    print(f"\nCNOT gate tests: {tests_passed}/{tests_total} passed")
+    return tests_passed == tests_total
+
+
 def verify_bell_states():
     tests_passed = 0
     tests_total = 0
@@ -401,14 +433,15 @@ def benchmark_noisy_simulator():
 
 def run_all():
     v1 = verify_single_qubit_gates()
-    v2 = verify_bell_states()
-    v3 = verify_ghz_state()
-    v4 = verify_measurement_statistics()
+    v2 = verify_cnot_gate()
+    v3 = verify_bell_states()
+    v4 = verify_ghz_state()
+    v5 = verify_measurement_statistics()
 
     print("\n" + "="*60)
     print("SUMMARY")
     print("="*60)
-    if v1 and v2 and v3 and v4:
+    if v1 and v2 and v3 and v4 and v5:
         print("✓ All verification tests PASSED")
     else:
         print("✗ Some verification tests FAILED")
