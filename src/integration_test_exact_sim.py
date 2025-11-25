@@ -979,6 +979,22 @@ def test_qasm_end_to_end_with_noise_vs_ideal():
     assert not np.allclose(noisy_state, ideal_state, atol=1e-2), \
         "Noisy state is identical to ideal – noise may not be applied."
 
+
+def test_y_h_circuit(registries):
+    gate_reg, _ = registries
+    qc = QuantumCircuit(num_qubits=1, noise_model=None)
+
+    qc.add_gate(gate_reg.get('y'), targets=0)
+    qc.add_gate(gate_reg.get('h'), targets=0)
+    qc.execute()
+
+    actual_state = qc.get_state()
+    expected_state = np.array([1j / np.sqrt(2), -1j / np.sqrt(2)], dtype=complex)
+    print(f"Y-H Circuit Test: Expected {s(expected_state)}, Got {s(actual_state)}")
+
+    assert np.allclose(actual_state, expected_state), "Y-H circuit failed"
+
+
 if __name__ == "__main__":
     print("Running comprehensive integration tests for exact simulator...")
     pytest.main([__file__, "-v", "-s"])
