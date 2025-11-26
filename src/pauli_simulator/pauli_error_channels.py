@@ -221,3 +221,9 @@ class NoisySimulator:
         if self._enable_metrics:
             self._init_metrics()
             self.tableau.reset_metrics()
+
+    def copy(self):
+        new_sim = NoisySimulator(self.n, self.error_config, self._enable_metrics)
+        new_sim.tableau = self.tableau.copy()
+
+        return new_sim
