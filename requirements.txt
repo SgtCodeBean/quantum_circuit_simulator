@@ -14,7 +14,7 @@ pyOpenSSL==25.3.0
 pytest==8.4.2
 qiskit==2.2.3
 redis==7.1.0
-Sphinx==8.2.3
+Sphinx
 thread==2.0.5
 typing_extensions==4.15.0
 urllib3_secure_extra==0.1.0
