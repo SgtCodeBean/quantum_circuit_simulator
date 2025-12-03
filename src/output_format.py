@@ -289,6 +289,297 @@ class ResultWriter:
             OutputFormatter.write_to_file(content, self.output_path, mode='a')
 
 
+class TableauOutputFormatter:
+    """Formatting methods specifically for Tableau simulation results."""
+    
+    @staticmethod
+    def format_tableau_result(tableau, format_type: str = 'text') -> str:
+        """
+        Format Tableau simulation results.
+        
+        Args:
+            tableau: Tableau instance after simulation
+            format_type: 'text', 'json', or 'minimal'
+        
+        Returns:
+            Formatted string
+        """
+        if format_type == 'json':
+            return TableauOutputFormatter._format_tableau_json(tableau)
+        elif format_type == 'minimal':
+            return TableauOutputFormatter._format_tableau_minimal(tableau)
+        else:  # text
+            return TableauOutputFormatter._format_tableau_text(tableau)
+    
+    @staticmethod
+    def _format_tableau_text(tableau) -> str:
+        """Format Tableau result as human-readable text."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("TABLEAU SIMULATION RESULT (Clifford Circuit)")
+        lines.append("=" * 60)
+        
+        # Circuit info
+        lines.append("\n[CIRCUIT INFO]")
+        lines.append(f"  Qubits:       {tableau.n}")
+        lines.append(f"  Classical:    {tableau.num_cbits}")
+        lines.append(f"  Operations:   {len(tableau.ops)}")
+        
+        # Count operation types
+        gate_count = sum(1 for op in tableau.ops if op[0] == 'gate')
+        meas_count = sum(1 for op in tableau.ops if op[0] == 'measure')
+        reset_count = sum(1 for op in tableau.ops if op[0] == 'reset')
+        lines.append(f"                ({gate_count} gates, {meas_count} measurements, "
+                    f"{reset_count} resets)")
+        
+        # Classical register
+        if tableau.num_cbits > 0:
+            lines.append("\n[CLASSICAL REGISTER]")
+            classical_reg = tableau.get_classical_register()
+            bitstring = classical_reg['bitstring']
+            lines.append(f"  Bitstring: |{bitstring}⟩")
+            for i in range(tableau.num_cbits):
+                lines.append(f"  c[{i}] = {classical_reg[f'c[{i}]']}")
+        
+        # Measurements
+        if tableau._measurements:
+            lines.append("\n[MEASUREMENTS]")
+            for qubit, info in sorted(tableau._measurements.items()):
+                det_str = "deterministic" if info['deterministic'] else "probabilistic"
+                cbit_str = f"c[{info['cbit']}]" if info['cbit'] is not None else "not stored"
+                lines.append(f"  q[{qubit}] → {info['outcome']} ({det_str}, stored in {cbit_str})")
+        
+        # Stabilizer state info
+        lines.append("\n[STABILIZER STATE]")
+        lines.append(f"  Tableau dimensions: {2 * tableau.n} × {tableau.n}")
+        lines.append(f"  State type: Clifford (exponentially compressed)")
+        
+        # Show a few operations
+        if tableau.ops:
+            lines.append("\n[CIRCUIT OPERATIONS] (last 10 shown)")
+            for i, op in enumerate(tableau.ops[-10:], start=max(1, len(tableau.ops) - 9)):
+                if op[0] == 'gate':
+                    _, gate_name, qubits = op
+                    if len(qubits) == 1:
+                        lines.append(f"  {i:3d}. {gate_name.upper():4s} q[{qubits[0]}]")
+                    elif len(qubits) == 2:
+                        lines.append(f"  {i:3d}. {gate_name.upper():4s} q[{qubits[0]}], q[{qubits[1]}]")
+                
+                elif op[0] == 'measure':
+                    _, qubit, cbit, outcome = op
+                    if cbit is not None:
+                        lines.append(f"  {i:3d}. MEAS q[{qubit}] → c[{cbit}] (outcome: {outcome})")
+                    else:
+                        lines.append(f"  {i:3d}. MEAS q[{qubit}] (outcome: {outcome})")
+                
+                elif op[0] == 'reset':
+                    _, qubit = op
+                    lines.append(f"  {i:3d}. RESET q[{qubit}]")
+        
+        lines.append("\n" + "=" * 60 + "\n")
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_tableau_minimal(tableau) -> str:
+        """Format Tableau result as minimal summary."""
+        lines = []
+        
+        if tableau.num_cbits > 0:
+            bitstring = tableau.get_classical_register()['bitstring']
+            lines.append(f"Result: |{bitstring}⟩")
+        else:
+            lines.append("Result: No measurements performed")
+        
+        lines.append(f"Operations: {len(tableau.ops)}")
+        
+        if tableau._measurements:
+            lines.append(f"Measurements: {len(tableau._measurements)}")
+            det_count = sum(1 for m in tableau._measurements.values() if m['deterministic'])
+            prob_count = len(tableau._measurements) - det_count
+            lines.append(f"  - Deterministic: {det_count}")
+            lines.append(f"  - Probabilistic: {prob_count}")
+        
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_tableau_json(tableau) -> str:
+        """Format Tableau result as JSON."""
+        result = {
+            'circuit_info': {
+                'num_qubits': tableau.n,
+                'num_cbits': tableau.num_cbits,
+                'num_operations': len(tableau.ops),
+                'gate_count': sum(1 for op in tableau.ops if op[0] == 'gate'),
+                'measurement_count': sum(1 for op in tableau.ops if op[0] == 'measure'),
+                'reset_count': sum(1 for op in tableau.ops if op[0] == 'reset'),
+            },
+            'classical_register': tableau.get_classical_register() if tableau.num_cbits > 0 else {},
+            'measurements': {
+                str(q): info for q, info in tableau._measurements.items()
+            },
+            'operations': []
+        }
+        
+        # Add operations
+        for op in tableau.ops:
+            if op[0] == 'gate':
+                result['operations'].append({
+                    'type': 'gate',
+                    'gate': op[1],
+                    'qubits': op[2]
+                })
+            elif op[0] == 'measure':
+                result['operations'].append({
+                    'type': 'measure',
+                    'qubit': op[1],
+                    'cbit': op[2],
+                    'outcome': int(op[3])
+                })
+            elif op[0] == 'reset':
+                result['operations'].append({
+                    'type': 'reset',
+                    'qubit': op[1]
+                })
+        
+        return json.dumps(result, indent=2)
+    
+    @staticmethod
+    def format_tableau_metrics(tableau, format_type: str = 'text') -> str:
+        """
+        Format Tableau performance metrics.
+        
+        Args:
+            tableau: Tableau instance with metrics enabled
+            format_type: 'text' or 'json'
+        
+        Returns:
+            Formatted string
+        """
+        metrics = tableau.get_metrics()
+        
+        if metrics is None:
+            return "Metrics collection was not enabled."
+        
+        if format_type == 'json':
+            return json.dumps(metrics, indent=2)
+        
+        # Text format
+        lines = []
+        lines.append("\n" + "=" * 50)
+        lines.append("TABLEAU SIMULATOR METRICS")
+        lines.append("=" * 50)
+        
+        lines.append(f"\nTableau size: {tableau.n} qubits")
+        
+        lines.append("\n--- Operations ---")
+        lines.append(f"Total operations: {metrics['operations']['total_operations']}")
+        lines.append(f"Gate count: {metrics['operations']['gate_count']}")
+        lines.append(f"Measurement count: {metrics['operations']['measurement_count']}")
+        
+        lines.append("\n--- Gates by Type ---")
+        for gate, count in metrics['operations']['gates_by_type'].items():
+            if count > 0:
+                lines.append(f"  {gate.upper()}: {count}")
+        
+        lines.append("\n--- Measurements ---")
+        lines.append(f"Deterministic: {metrics['measurements']['deterministic']}")
+        lines.append(f"Probabilistic: {metrics['measurements']['probabilistic']}")
+        lines.append(f"Outcomes: 0={metrics['measurements']['outcomes'][0]}, "
+                    f"1={metrics['measurements']['outcomes'][1]}")
+        
+        lines.append("\n--- Timing ---")
+        total_time = metrics['execution']['total_time_seconds']
+        lines.append(f"Total time: {total_time*1000:.3f} ms")
+        lines.append(f"Gate time: {metrics['timing']['gate_time_seconds']*1000:.3f} ms")
+        lines.append(f"Measurement time: {metrics['timing']['measurement_time_seconds']*1000:.3f} ms")
+        
+        if total_time > 0:
+            gate_pct = metrics['timing']['gate_time_seconds'] / total_time * 100
+            meas_pct = metrics['timing']['measurement_time_seconds'] / total_time * 100
+            lines.append(f"Gate time %: {gate_pct:.1f}%")
+            lines.append(f"Measurement time %: {meas_pct:.1f}%")
+        
+        lines.append("=" * 50 + "\n")
+        return "\n".join(lines)
+
+
+class TableauResultWriter:
+    """
+    Result writer specifically for Tableau simulations.
+    """
+    
+    def __init__(self, output_path=None, format_type='text', verbose=True):
+        """
+        Initialize Tableau result writer.
+        
+        Args:
+            output_path: Path to output file (None for console only)
+            format_type: Output format ('text', 'json', 'minimal')
+            verbose: Whether to also print to console
+        """
+        self.output_path = output_path
+        self.format_type = format_type
+        self.verbose = verbose
+    
+    def write_result(self, tableau):
+        """Write or print Tableau simulation result."""
+        content = TableauOutputFormatter.format_tableau_result(tableau, self.format_type)
+        
+        if self.verbose:
+            print(content)
+        
+        if self.output_path:
+            self._write_to_file(content)
+    
+    def write_metrics(self, tableau):
+        """Write or print Tableau metrics."""
+        content = TableauOutputFormatter.format_tableau_metrics(tableau, self.format_type)
+        
+        if self.verbose:
+            print(content)
+        
+        if self.output_path:
+            self._append_to_file(content)
+    
+    def write_circuit_structure(self, tableau):
+        """Write or print detailed circuit structure."""
+        if self.verbose:
+            tableau.print_circuit()
+        
+        if self.output_path:
+            # Capture print_circuit output
+            import io
+            import sys
+            
+            old_stdout = sys.stdout
+            sys.stdout = buffer = io.StringIO()
+            
+            tableau.print_circuit()
+            
+            sys.stdout = old_stdout
+            content = buffer.getvalue()
+            
+            self._append_to_file(content)
+    
+    def _write_to_file(self, content):
+        """Write content to file."""
+        from pathlib import Path
+        path = Path(self.output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    
+    def _append_to_file(self, content):
+        """Append content to file."""
+        from pathlib import Path
+        path = Path(self.output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(content)
+
+
 # Convenience functions
 def save_results(result: Dict[str, Any], filepath: str, format_type: str = 'text'):
     """
@@ -307,7 +598,6 @@ def save_results(result: Dict[str, Any], filepath: str, format_type: str = 'text
     
     OutputFormatter.write_to_file(content, filepath)
 
-
 def print_results(result: Dict[str, Any], format_type: str = 'text'):
     """
     Print quantum circuit results to console.
@@ -323,3 +613,36 @@ def print_results(result: Dict[str, Any], format_type: str = 'text'):
         content = OutputFormatter.format_execution_result(result, format_type)
     
     OutputFormatter.print_to_console(content)
+
+def save_tableau_results(tableau, filepath: str, format_type: str = 'text', 
+                         include_metrics: bool = False):
+    """
+    Save Tableau simulation results to a file.
+    
+    Args:
+        tableau: Tableau instance after simulation
+        filepath: Output file path
+        format_type: Format type ('text', 'json', 'minimal')
+        include_metrics: Whether to include performance metrics
+    """
+    writer = TableauResultWriter(output_path=filepath, format_type=format_type, verbose=False)
+    writer.write_result(tableau)
+    
+    if include_metrics and tableau.get_metrics():
+        writer.write_metrics(tableau)
+
+
+def print_tableau_results(tableau, format_type: str = 'text', include_metrics: bool = False):
+    """
+    Print Tableau simulation results to console.
+    
+    Args:
+        tableau: Tableau instance after simulation
+        format_type: Format type ('text', 'json', 'minimal')
+        include_metrics: Whether to include performance metrics
+    """
+    writer = TableauResultWriter(output_path=None, format_type=format_type, verbose=True)
+    writer.write_result(tableau)
+    
+    if include_metrics and tableau.get_metrics():
+        writer.write_metrics(tableau)

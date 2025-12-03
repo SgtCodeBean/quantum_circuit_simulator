@@ -3,7 +3,7 @@ from utils.quantum_operations import apply_qubit
 import sys
 sys.path.append('..')
 from gates.registry import GateRegistry
-from cbit import CBit
+from utils.cbit import CBit
 import time
 from typing import Optional
 from error_channels.noise_model import NoiseModel
@@ -78,24 +78,21 @@ class QuantumCircuit:
 
                 if self.metrics.enabled:
                     start_time = time.perf_counter()
-                # normalize targets to a list for noise model
                 if isinstance(targets, int):
                     tlist = [targets]
                 else:
                     tlist = list(targets)
 
-                # 1) ideal unitary evolution
                 self.state = apply_qubit(self.state, gate, tlist, self.num_qubits)
 
-                # 2) optional noise after gate
                 if self.noise_model is not None:
                     self.state = self.noise_model.apply_after_gate(
                         state=self.state,
-                        gate_name=gate.name,  # "x", "h", "cx", "ccx", etc.
+                        gate_name=gate.name,
                         targets=tlist,
                         n_qubits=self.num_qubits,
                         rng=self.rng,
-                        circuit=self,  # so record_channel_hit works
+                        circuit=self,
                     )
 
                 if self.metrics.enabled:

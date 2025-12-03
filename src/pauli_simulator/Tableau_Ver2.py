@@ -8,9 +8,9 @@ Corrected Tableau class for efficient Clifford circuit simulation.
 
 
 class Tableau:
-    __slots__ = ('n', '_x', '_z', '_r', '_metrics', '_enable_metrics')
+    __slots__ = ('n', '_x', '_z', '_r', '_metrics', '_enable_metrics', 'ops', 'num_cbits', '_cbits', '_measurements')
 
-    def __init__(self, n, enable_metrics=False):
+    def __init__(self, n, num_cbits=0, enable_metrics=False):
         """
         Initialize tableau for n qubits in |0...0⟩ state.
 
@@ -19,12 +19,17 @@ class Tableau:
             enable_metrics (bool): Whether to collect performance metrics
         """
         self.n = n
+        self.num_cbits = num_cbits
         self._x = np.zeros((2 * n, n), dtype=np.uint8)
         self._z = np.zeros((2 * n, n), dtype=np.uint8)
         self._r = np.zeros(2 * n, dtype=np.uint8)
         for i in range(n):
             self._x[i, i] = 1
             self._z[n + i, i] = 1
+
+        self._cbits = np.zeros(self.num_cbits, dtype=np.uint8)
+        self.ops = []
+        self._measurements = {}
 
         self._enable_metrics = enable_metrics
         self._metrics = None
@@ -88,6 +93,9 @@ class Tableau:
             self._x[i, q], self._z[i, q] = self._z[i, q], self._x[i, q]
         if self._enable_metrics:
             self._record_gate('h', time.perf_counter() - start)
+        
+        self.ops.append(('gate', 'h', [q]))
+        return self
 
     def s(self, q):
         """Phase gate"""
@@ -97,6 +105,9 @@ class Tableau:
             self._z[i, q] ^= self._x[i, q]
         if self._enable_metrics:
             self._record_gate('s', time.perf_counter() - start)
+        
+        self.ops.append(('gate', 's', [q]))
+        return self
 
     def cx(self, c, t):
         """CNOT gate: control c, target t"""
@@ -108,6 +119,9 @@ class Tableau:
         if self._enable_metrics:
             self._record_gate('cx', time.perf_counter() - start)
 
+        self.ops.append(('gate', 'cx', [c, t]))
+        return self
+
     def x(self, q):
         """Pauli X: bit flip"""
         start = time.perf_counter() if self._enable_metrics else 0
@@ -115,6 +129,9 @@ class Tableau:
             self._r[i] ^= self._z[i, q]
         if self._enable_metrics:
             self._record_gate('x', time.perf_counter() - start)
+        
+        self.ops.append(('gate', 'x', [q]))
+        return self
 
     def y(self, q):
         """Pauli Y: bit + phase flip"""
@@ -124,6 +141,9 @@ class Tableau:
         if self._enable_metrics:
             self._record_gate('y', time.perf_counter() - start)
 
+        self.ops.append(('gate', 'y', [q]))
+        return self
+
     def z(self, q):
         """Pauli Z: phase flip"""
         start = time.perf_counter() if self._enable_metrics else 0
@@ -132,13 +152,19 @@ class Tableau:
         if self._enable_metrics:
             self._record_gate('z', time.perf_counter() - start)
 
-    def measure(self, q):
+        self.ops.append(('gate', 'z', [q]))
+        return self
+
+    def measure(self, q, cbit=None):
         """
         Measure qubit q in the Z basis.
         Returns the measurement outcome (0 or 1).
         """
         start = time.perf_counter() if self._enable_metrics else 0
 
+        if cbit is not None:
+            if cbit < 0 or cbit >= self.num_cbits:
+                raise ValueError(f"Classical bit {cbit} out of range [0, {self.num_cbits})")
         # Case I: Random outcome
         p = -1
         for i in range(self.n, 2 * self.n):
@@ -164,6 +190,18 @@ class Tableau:
 
             if self._enable_metrics:
                 self._record_measurement(outcome, False, time.perf_counter() - start)
+            
+            if cbit is not None:
+                self._cbits[cbit] = outcome
+
+            self._measurements[q] = {
+                'outcome': outcome,
+                'cbit': cbit,
+                'deterministic': False
+            }
+
+            self.ops.append(('measure', q, cbit, outcome))
+
             return outcome
 
         # Case II: Deterministic outcome
@@ -197,7 +235,62 @@ class Tableau:
 
             if self._enable_metrics:
                 self._record_measurement(temp_r, True, time.perf_counter() - start)
+
+            if cbit is not None:
+                self._cbits[cbit] = temp_r
+
+            self._measurements[q] = {
+                'outcome': temp_r,
+                'cbit': cbit,
+                'deterministic': True
+            }
+
+            self.ops.append(('measure', q, cbit, temp_r))
+
             return temp_r
+    
+    def reset(self, q):
+        """
+        Reset qubit q to |0⟩ state.
+        Implemented via measurement + conditional X gate.
+        
+        Args:
+            q (int): Qubit to reset
+            
+        Returns:
+            self: For method chaining
+        """
+        outcome = self.measure(q, cbit=None)
+        
+        # If measured 1, apply X to flip to 0
+        if outcome == 1:
+            self.x(q)
+
+        self.ops.append(('reset', q))
+        
+        return self
+    
+    def get_classical_register(self):
+        if self.num_cbits == 0:
+            return {'bitstring': ''}
+        
+        result = {
+            f'c[{i}]': int(self._cbits[i])
+            for i in range(self.num_cbits)
+        }
+        result['bitstring'] = ''.join(str(int(self._cbits[i])) for i in range(self.num_cbits))
+        return result
+    
+    def get_cbits(self):
+        return self._cbits.copy()
+    
+    def get_cbit(self, index):
+        if index < 0 or index >= self.num_cbits:
+            raise ValueError(f"Classical bit {index} out of range [0, {self.num_cbits})")
+        return self._cbits[index]
+    
+    def get_measurements(self):
+        return self._measurements
 
     def get_metrics(self):
         """
@@ -214,6 +307,43 @@ class Tableau:
         self._metrics['execution']['total_time_seconds'] = total_time
 
         return self._metrics.copy()
+    
+    def print_circuit(self):
+        """Print a readable representation of the circuit structure."""
+        print("\n" + "=" * 60)
+        print(f"TABLEAU CIRCUIT: {self.n} qubits, {self.num_cbits} classical bits")
+        print("=" * 60)
+        
+        if not self.ops:
+            print("(empty circuit)")
+        else:
+            print(f"\nOperations ({len(self.ops)} total):\n")
+            for i, op in enumerate(self.ops, 1):
+                if op[0] == 'gate':
+                    _, gate_name, qubits = op
+                    if len(qubits) == 1:
+                        print(f"  {i:3d}. {gate_name.upper():4s} q[{qubits[0]}]")
+                    elif len(qubits) == 2:
+                        print(f"  {i:3d}. {gate_name.upper():4s} q[{qubits[0]}], q[{qubits[1]}]")
+                    else:
+                        print(f"  {i:3d}. {gate_name.upper():4s} {qubits}")
+                
+                elif op[0] == 'measure':
+                    _, qubit, cbit, outcome = op
+                    if cbit is not None:
+                        print(f"  {i:3d}. MEAS q[{qubit}] -> c[{cbit}] (outcome: {outcome})")
+                    else:
+                        print(f"  {i:3d}. MEAS q[{qubit}] (outcome: {outcome})")
+                
+                elif op[0] == 'reset':
+                    _, qubit = op
+                    print(f"  {i:3d}. RESET q[{qubit}]")
+        
+        # Print final classical register state
+        if self.num_cbits > 0:
+            print(f"\nFinal classical register: {self.get_classical_register()['bitstring']}")
+        
+        print("=" * 60 + "\n")
 
     def print_metrics(self):
         """Print a formatted summary of metrics."""

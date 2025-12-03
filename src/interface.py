@@ -4,7 +4,7 @@ import os
 import qasm_parser
 from gates.registry import GateRegistry
 from circuit_results import ResultManager
-from output_format import ResultWriter
+from output_format import ResultWriter, TableauResultWriter
 
 def verify_file(file_path):
     abspath = os.path.abspath(file_path)
@@ -26,14 +26,12 @@ def determine_output_format(output_path):
     }
     return format_map.get(ext, 'text')
 
-def run_statevector_simulator(file, shots, metrics=None, output=None, seed=None, verbose=True, format_type=None):
+def run_statevector_simulator(file, shots, metrics=False, output=None, seed=None, verbose=True, format_type=None):
     print(f"Running statevector simulation for {file} with {shots} shots...")
     if output:
         print(f"Output will be saved to: {output}")
 
-    qasm_ir = qasm_parser.parse_qasm_file(file)
-    reg = GateRegistry()
-    qc = qasm_parser.build_circuit_from_ir(qasm_ir, reg, num_shots=shots, metrics=metrics, rng_seed=seed)
+    qc = qasm_parser.qasm_file_to_exactsim(file, num_shots=shots, enable_metrics=metrics, rng_seed=seed)
 
     if format_type is None:
         format_type = determine_output_format(output)
@@ -74,6 +72,33 @@ def run_density_simulator(file, metrics=None, output=None):
     else:
         print()
 
+def run_tableau_simulator(file, shots, metrics=None, output=None, verbose=False, format_type=None):
+    print(f"Running tableau structure simulation for {file}...")
+    if output:
+        print(f"Output will be saved to: {output}")
+
+    clifford_basis = ['h', 's', 'x', 'y', 'z', 'cx', 'measure', 'reset']
+    qc = qasm_parser.qasm_file_to_tableau(file, basis_gates=clifford_basis, num_shots=shots, metrics=metrics)
+
+    if format_type is None:
+        format_type = determine_output_format(output)
+    
+    writer = TableauResultWriter(
+        output_path=output,
+        format_type=format_type,
+        verbose=verbose
+    )
+
+    writer.write_result(qc)
+
+    if metrics:
+        if verbose:
+            print("\n" + "="*60)
+        writer.write_metrics(qc)
+    
+    if verbose and output:
+        print(f"\n✓ Results saved to {output}")
+
 def main():
     parser = argparse.ArgumentParser(
         description="Quantum Circuit Simulator CLI"
@@ -81,7 +106,7 @@ def main():
 
     parser.add_argument(
         "mode",
-        choices=["statevector", "density"],
+        choices=["statevector", "density", "tableau"],
         help="Select simulation mode"
     )
 
@@ -161,6 +186,15 @@ def main():
             )
     elif args.mode == "density":
         run_density_simulator(args.file, args.metrics, args.output)
+    elif args.mode == "tableau":
+        run_tableau_simulator(
+            file=args.file,
+            shots=args.shots,
+            metrics=args.metrics,
+            output=args.output,
+            verbose=verbose,
+            format_type=args.format
+            )
     else:
         print("Unknown mode selected.")
         sys.exit(1)
