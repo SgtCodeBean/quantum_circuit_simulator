@@ -519,11 +519,16 @@ class Tableau:
     def copy(self):
         t = Tableau.__new__(Tableau)
         t.n = self.n
+        t.num_cbits = self.num_cbits
         t._x = self._x.copy()
         t._z = self._z.copy()
         t._r = self._r.copy()
+        t._cbits = self._cbits.copy()
+        t.ops = self.ops.copy()
+        t._measurements = self._measurements.copy()
         t._enable_metrics = self._enable_metrics
         t._metrics = None
+        t._process = None
         if self._enable_metrics and self._metrics:
             import copy
             t._metrics = copy.deepcopy(self._metrics)
