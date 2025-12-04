@@ -1,5 +1,7 @@
 import numpy as np
 import time
+import psutil
+import os
 
 """
 Corrected Tableau class for efficient Clifford circuit simulation.
@@ -8,7 +10,7 @@ Corrected Tableau class for efficient Clifford circuit simulation.
 
 
 class Tableau:
-    __slots__ = ('n', '_x', '_z', '_r', '_metrics', '_enable_metrics', 'ops', 'num_cbits', '_cbits', '_measurements')
+    __slots__ = ('n', '_x', '_z', '_r', '_metrics', '_process', '_enable_metrics', 'ops', 'num_cbits', '_cbits', '_measurements')
 
     def __init__(self, n, num_cbits=0, enable_metrics=False):
         """
@@ -33,11 +35,16 @@ class Tableau:
 
         self._enable_metrics = enable_metrics
         self._metrics = None
+        self._process = None
         if enable_metrics:
             self._init_metrics()
 
     def _init_metrics(self):
         """Initialize metrics dictionary."""
+        try :
+            self._process = psutil.Process(os.getpid())
+        except :
+            self._process = None
         self._metrics = {
             'execution': {
                 'total_time_seconds': 0.0,
@@ -60,8 +67,54 @@ class Tableau:
                 'deterministic': 0,
                 'probabilistic': 0,
                 'outcomes': {0: 0, 1: 0}
+            },
+            'memory': {
+                'initial_mb': self._get_memory_mb(),
+                'peak_mb': self._get_memory_mb(),
+                'final_mb': 0.0,
+                'delta_mb': 0.0,
+                'gate_memory': {
+                    'samples': [],
+                    'avg_mb': 0.0,
+                    'peak_mb': 0.0
+                },
+                'measurement_memory': {
+                    'samples': [],
+                    'avg_mb': 0.0,
+                    'peak_mb': 0.0
+                },
+                'tableau_size_mb': self._calculate_tableau_size_mb()
             }
         }
+    
+    def _get_memory_mb(self) -> float:
+        """Get current memory usage in MB."""
+        if self._process is None:
+            return 0.0
+        try:
+            return self._process.memory_info().rss / (1024 * 1024)
+        except:
+            return 0.0
+        
+    def _calculate_tableau_size_mb(self) -> float:
+        """Calculate the theoretical memory size of the tableau."""
+        # Each array element is uint8 (1 byte)
+        # _x: (2n, n), _z: (2n, n), _r: (2n,)
+        x_size = self._x.nbytes
+        z_size = self._z.nbytes
+        r_size = self._r.nbytes
+        cbits_size = self._cbits.nbytes if self.num_cbits > 0 else 0
+        
+        total_bytes = x_size + z_size + r_size + cbits_size
+        return total_bytes / (1024 * 1024)
+    
+    def _record_peak_memory(self):
+        current_mem = self._get_memory_mb()
+        self._metrics['memory']['gate_memory']['samples'].append(current_mem)
+        self._metrics['memory']['gate_memory']['peak_mb'] = max(
+            self._metrics['memory']['gate_memory'].get('peak_mb', 0),
+            current_mem
+        )
 
     def _record_gate(self, gate_name, elapsed):
         """Record a gate operation."""
@@ -71,6 +124,7 @@ class Tableau:
         self._metrics['operations']['total_operations'] += 1
         self._metrics['operations']['gates_by_type'][gate_name] += 1
         self._metrics['timing']['gate_time_seconds'] += elapsed
+        self._record_peak_memory()
 
     def _record_measurement(self, outcome, is_deterministic, elapsed):
         """Record a measurement operation."""
@@ -84,6 +138,30 @@ class Tableau:
         else:
             self._metrics['measurements']['probabilistic'] += 1
         self._metrics['measurements']['outcomes'][outcome] += 1
+        self._record_peak_memory()
+
+    def _finalize_memory(self):
+        """Calculate final memory statistics."""
+        if not self._enable_metrics:
+            return
+        
+        # Final memory snapshot
+        self._metrics['memory']['final_mb'] = self._get_memory_mb()
+        self._metrics['memory']['delta_mb'] = (
+            self._metrics['memory']['final_mb'] - 
+            self._metrics['memory']['initial_mb']
+        )
+        
+        # Calculate average memory for gates
+        gate_samples = self._metrics['memory']['gate_memory']['samples']
+        if gate_samples:
+            self._metrics['memory']['gate_memory']['avg_mb'] = sum(gate_samples) / len(gate_samples)
+        
+        # Calculate average memory for measurements
+        meas_samples = self._metrics['memory']['measurement_memory']['samples']
+        if meas_samples:
+            self._metrics['memory']['measurement_memory']['avg_mb'] = sum(meas_samples) / len(meas_samples)
+
 
     def h(self, q):
         """Hadamard gate"""
@@ -301,6 +379,8 @@ class Tableau:
         """
         if not self._enable_metrics:
             return None
+        
+        self._finalize_memory()
 
         total_time = (self._metrics['timing']['gate_time_seconds'] +
                      self._metrics['timing']['measurement_time_seconds'])
@@ -386,6 +466,17 @@ class Tableau:
             meas_pct = m['timing']['measurement_time_seconds'] / total_time * 100
             print(f"Gate time %: {gate_pct:.1f}%")
             print(f"Measurement time %: {meas_pct:.1f}%")
+        
+        print("\n--- Memory (MB) ---")
+        print(f"Tableau theoretical size: {m['memory']['tableau_size_mb']:.4f}")
+        print(f"Initial (RSS):          {m['memory']['initial_mb']:.2f}")
+        print(f"Final (RSS):            {m['memory']['final_mb']:.2f}")
+        print(f"Peak (RSS):             {m['memory']['peak_mb']:.2f}")
+        print(f"Delta (Final - Initial): {m['memory']['delta_mb']:+.2f}")
+        print(f"Avg Gate Op (RSS):      {m['memory']['gate_memory']['avg_mb']:.2f} (Peak: \
+              {m['memory']['gate_memory']['peak_mb']:.2f})")
+        print(f"Avg Measure Op (RSS):   {m['memory']['measurement_memory']['avg_mb']:.2f} \
+              (Peak: {m['memory']['measurement_memory']['peak_mb']:.2f})")
 
         print("=" * 50 + "\n")
 

@@ -499,6 +499,22 @@ class TableauOutputFormatter:
             lines.append(f"Gate time %: {gate_pct:.1f}%")
             lines.append(f"Measurement time %: {meas_pct:.1f}%")
         
+        memory = metrics['memory']
+        lines.append("\n--- Memory (MB) ---")
+        lines.append(f"Tableau theoretical size: {memory['tableau_size_mb']:.4f}")
+        lines.append(f"Initial (RSS):          {memory['initial_mb']:.2f}")
+        lines.append(f"Final (RSS):            {memory['final_mb']:.2f}")
+        lines.append(f"Peak (RSS):             {memory['peak_mb']:.2f}")
+        lines.append(f"Delta (Final - Initial): {memory['delta_mb']:+.2f}")
+        
+        if memory['gate_memory']['samples']:
+            lines.append(f"Avg Gate Op (RSS):      {memory['gate_memory']['avg_mb']:.2f}\
+                          (Peak: {memory['gate_memory']['peak_mb']:.2f})")
+        
+        if memory['measurement_memory']['samples']:
+             lines.append(f"Avg Measure Op (RSS):   {memory['measurement_memory']['avg_mb']:.2f}\
+                           (Peak: {memory['measurement_memory']['peak_mb']:.2f})")
+        
         lines.append("=" * 50 + "\n")
         return "\n".join(lines)
 
