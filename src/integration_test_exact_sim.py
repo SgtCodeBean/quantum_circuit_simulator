@@ -863,7 +863,7 @@ def test_quantum_teleportation_protocol(registries):
     assert np.allclose(np.sum(np.abs(full_state)**2), 1.0), "Teleportation broke normalization"
 
 
-def test_qasm_end_to_end_with_noise():
+def test_qasm_end_to_end_with_noise_state_vector():
     # 1) QASM string using only gates in your basis/registry
     qasm_str = """
     OPENQASM 2.0;
@@ -926,7 +926,7 @@ def test_qasm_end_to_end_with_noise():
     probs = qc.measure_probabilities()
     assert np.isclose(probs.sum(), 1.0, atol=1e-10), "Probabilities do not sum to 1"
 
-def test_qasm_end_to_end_with_noise_vs_ideal():
+def test_qasm_end_to_end_with_noise_vs_ideal_state_vector():
     qasm_str = """
     OPENQASM 2.0;
     include "qelib1.inc";
@@ -979,6 +979,144 @@ def test_qasm_end_to_end_with_noise_vs_ideal():
     assert not np.allclose(noisy_state, ideal_state, atol=1e-2), \
         "Noisy state is identical to ideal – noise may not be applied."
 
+def test_qasm_end_to_end_with_noise_density():
+    # 1) QASM string using only gates in your basis/registry
+    qasm_str = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[3];
+    creg c[3];
+
+    // Prepare some superposition and entanglement
+    h q[0];
+    s q[1];
+
+    x q[2];
+    y q[0];
+    z q[1];
+
+    cx q[0], q[1];
+    ccx q[0], q[1], q[2];
+
+    measure q -> c;
+    """
+
+    # 2) Basis gates your simulator implements
+    basis = [
+        "x", "y", "z",
+        "h", "s",
+        "cx", "ccx",
+        "measure",
+    ]
+
+    # 3) Parse QASM → IR
+    ir = parse_qasm_source(qasm_str, basis_gates=basis)
+
+    # 4) Build registry and density-matrix QuantumCircuit from IR
+    gate_reg = GateRegistry(preload_defaults=True)
+
+    qc: QuantumCircuit = build_circuit_from_ir(ir, gate_reg, use_density_matrix=True)
+
+    # 5) Attach noise model + RNG
+    noise = build_default_noise_model()
+    qc.set_noise_model(noise)
+    qc.set_rng(np.random.default_rng(123))
+
+    # 6) Execute the circuit
+    qc.execute()
+
+    # 7) Basic sanity checks for a density matrix
+    rho = qc.get_state()
+    d = 2 ** qc.num_qubits
+
+    # (a) Shape is (2^n, 2^n)
+    assert rho.shape == (d, d), "Density matrix has wrong dimension"
+
+    # (b) Hermitian: ρ = ρ†
+    assert np.allclose(rho, rho.conj().T, atol=1e-10), "ρ is not Hermitian"
+
+    # (c) Trace ≈ 1
+    tr = np.trace(rho).real
+    assert np.isclose(tr, 1.0, atol=1e-10), f"Trace(ρ) != 1 (got {tr})"
+
+    # (d) Probabilities from diagonal sum to 1
+    probs = qc.measure_probabilities()
+    assert np.all(probs >= -1e-12), "Negative probabilities on diagonal (up to numerical error)"
+    assert np.isclose(probs.sum(), 1.0, atol=1e-10), "Probabilities do not sum to 1"
+
+    # (e) Classical bits in {0,1}
+    cbits = qc.get_cbits()
+    for i in range(qc.num_cbits):
+        v = cbits.get_bit(i)
+        assert v in (0, 1), f"Classical bit {i} has invalid value {v}"
+
+def test_qasm_end_to_end_with_noise_vs_ideal_density():
+    qasm_str = """
+    OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[3];
+    creg c[3];
+
+    h q[0];
+    s q[1];
+    x q[2];
+    y q[0];
+    z q[1];
+    cx q[0], q[1];
+    ccx q[0], q[1], q[2];
+    measure q -> c;
+    """
+
+    basis = ["x", "y", "z", "h", "s", "cx", "ccx", "measure"]
+
+    ir = parse_qasm_source(qasm_str, basis_gates=basis)
+    gate_reg = GateRegistry(preload_defaults=True)
+
+    # --- ideal circuit (no noise), density matrix ---
+    qc_ideal = build_circuit_from_ir(ir, gate_reg, use_density_matrix=True)
+    qc_ideal.set_noise_model(None)  # explicit: no noise
+    qc_ideal.set_rng(np.random.default_rng(123))
+    qc_ideal.execute()
+    rho_ideal = qc_ideal.get_state()
+
+    # --- noisy circuit (strong depolarizing to make difference obvious) ---
+    channel_reg = ChannelRegistry(preload_defaults=True)
+    noise = NoiseModel(
+        channel_registry=channel_reg,
+        default_spec={
+            "type": "depolarizing",
+            "params": (0.8,),     # large p so effect is visible
+            "scope": "per_qubit",
+        },
+        per_gate_specs={}
+    )
+
+    qc_noisy = build_circuit_from_ir(ir, gate_reg, use_density_matrix=True)
+    qc_noisy.set_noise_model(noise)
+    qc_noisy.set_rng(np.random.default_rng(123))
+    qc_noisy.execute()
+    rho_noisy = qc_noisy.get_state()
+
+    d = 2 ** qc_ideal.num_qubits
+
+    # basic sanity
+    assert rho_ideal.shape == (d, d)
+    assert rho_noisy.shape == (d, d)
+    assert np.isclose(np.trace(rho_ideal).real, 1.0, atol=1e-10)
+    assert np.isclose(np.trace(rho_noisy).real, 1.0, atol=1e-10)
+
+    # **key assertion**: noisy != ideal
+    assert not np.allclose(rho_noisy, rho_ideal, atol=1e-2), \
+        "Noisy density matrix is identical to ideal – noise may not be applied."
+
+    # checks that the noisy state is "more mixed"
+    # by comparing purity Tr(ρ^2)
+    purity_ideal = np.trace(rho_ideal @ rho_ideal).real
+    purity_noisy = np.trace(rho_noisy @ rho_noisy).real
+
+    # ideal purity should be ~1, noisy purity < 1
+    assert purity_ideal > 0.99
+    assert purity_noisy < purity_ideal
 
 def test_y_h_circuit(registries):
     gate_reg, _ = registries

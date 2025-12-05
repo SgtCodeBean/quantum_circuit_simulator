@@ -20,7 +20,7 @@ This class manages an n-qubit quantum state and allows sequential application of
 unitary quantum gates to evolve the state.
 """
 class QuantumCircuit:
-    def __init__(self, num_qubits, num_cbits=0, rng_seed=None,
+    def __init__(self, num_qubits, num_cbits=0, use_density_matrix=False, rng_seed=None,
                  enable_metrics=False,
                  num_shots=1024,
                  noise_model: Optional[NoiseModel] = build_default_noise_model(),
@@ -31,8 +31,16 @@ class QuantumCircuit:
         self.num_qubits = num_qubits
         self.num_cbits = num_cbits
         # initialize state vector in Hilbert space: |00...0⟩
-        self.state = np.zeros(2**num_qubits, dtype=complex)
-        self.state[0] = 1.0
+        self.use_density_matrix = use_density_matrix
+        d = 2 ** num_qubits
+
+        if use_density_matrix:
+            self.state = np.zeros((d, d), dtype=complex)
+            self.state[0, 0] = 1.0
+        else:
+            self.state = np.zeros(d, dtype=complex)
+            self.state[0] = 1.0
+
         self.ops = []
         self.cbits = CBit(num_bits=num_cbits)
         self.num_shots = num_shots
@@ -196,7 +204,10 @@ class QuantumCircuit:
         return self
 
     def measure_probabilities(self):
-        return np.abs(self.state)**2
+        if self.use_density_matrix:
+            return np.real(np.diag(self.state))
+        else:
+            return np.abs(self.state) ** 2
     
     def print_cbit(self, cbit):
         print(f"Classical Register {cbit}: {self.cbits.get_bit(cbit)}")
@@ -311,10 +322,14 @@ class QuantumCircuit:
             float: Expected value ⟨ψ|O|ψ⟩
         """
         obs = np.asarray(observable, dtype=complex)
-        if obs.shape != (2**self.num_qubits, 2**self.num_qubits):
-            raise ValueError(f"Observable must be {2**self.num_qubits}x{2**self.num_qubits} matrix")
+        d = 2 ** self.num_qubits
+        if obs.shape != (d, d):
+            raise ValueError(f"Observable must be {d}x{d} matrix")
 
-        return np.real(np.vdot(self.state, obs @ self.state))
+        if self.use_density_matrix:
+            return float(np.real(np.trace(self.state @ obs)))
+        else:
+            return float(np.real(np.vdot(self.state, obs @ self.state)))
 
     def get_entropy(self):
         """
@@ -324,11 +339,19 @@ class QuantumCircuit:
         Returns:
             float: Entropy S = -Σ p_i log(p_i)
         """
-        probs = self.measure_probabilities()
-        probs_nonzero = probs[probs > 1e-15]
-        if len(probs_nonzero) == 0:
-            return 0.0
-        return -np.sum(probs_nonzero * np.log2(probs_nonzero))
+        if self.use_density_matrix:
+            vals = np.linalg.eigvalsh(self.state)
+            vals = np.real(vals)
+            vals = vals[vals > 1e-15]
+            if len(vals) == 0:
+                return 0.0
+            return float(-np.sum(vals * np.log2(vals)))
+        else:
+            probs = self.measure_probabilities()
+            probs_nonzero = probs[probs > 1e-15]
+            if len(probs_nonzero) == 0:
+                return 0.0
+            return -np.sum(probs_nonzero * np.log2(probs_nonzero))
 
     def get_circuit_depth(self):
         """
@@ -420,33 +443,74 @@ class QuantumCircuit:
         """
         # Bit mask to determine probabilities of 0 or 1 within the qubit structure.
         bit_mask = 1 << (self.num_qubits - qubit - 1)
+        d = 2 ** self.num_qubits
 
-        i0 = [i for i in range(2**self.num_qubits) if (i & bit_mask) == 0]
-        i1 = [i for i in range(2**self.num_qubits) if (i & bit_mask) != 0]
+        if not self.use_density_matrix:
+            i0 = [i for i in range(d) if (i & bit_mask) == 0]
+            i1 = [i for i in range(d) if (i & bit_mask) != 0]
 
-        p0 = np.sum(np.abs(self.state[i0]) ** 2)
-        p1 = np.sum(np.abs(self.state[i1]) ** 2)
+            p0 = np.sum(np.abs(self.state[i0]) ** 2)
+            p1 = np.sum(np.abs(self.state[i1]) ** 2)
 
-        # Check for strong rounding error of probability floats
-        if abs(p0 + p1 - 1) > 1e-10:
-            norm = np.sqrt(p0 + p1)
+            # Check for strong rounding error of probability floats
+            if abs(p0 + p1 - 1) > 1e-10:
+                norm = np.sqrt(p0 + p1)
+                p0 /= norm
+                p1 /= norm
+
+            collapse = np.random.choice([0, 1], p=[p0, p1])
+
+            if collapse == 0:
+                self.state[i1] = 0
+                self.state /= np.sqrt(p0)
+            else:
+                self.state[i0] = 0
+                self.state /= np.sqrt(p1)
+
+            self.cbits.set_bit(cbit, collapse)
+            self._measurements[qubit] = {
+                "outcome": collapse,
+                "cbit": cbit
+            }
+            return collapse
+
+        rho = self.state
+        i0 = [i for i in range(d) if (i & bit_mask) == 0]
+        i1 = [i for i in range(d) if (i & bit_mask) != 0]
+
+        # projectors onto subspaces
+        P0 = np.zeros_like(rho)
+        P1 = np.zeros_like(rho)
+        for i in i0:
+            P0[i, i] = 1.0
+        for i in i1:
+            P1[i, i] = 1.0
+
+        p0 = np.real(np.trace(P0 @ rho))
+        p1 = np.real(np.trace(P1 @ rho))
+        # normalize if slight numerical drift
+        norm = p0 + p1
+        if abs(norm - 1) > 1e-10 and norm > 0:
             p0 /= norm
             p1 /= norm
-        
+
         collapse = np.random.choice([0, 1], p=[p0, p1])
 
         if collapse == 0:
-            self.state[i1] = 0
-            self.state /= np.sqrt(p0)
+            if p0 > 0:
+                rho_post = P0 @ rho @ P0 / p0
+            else:
+                rho_post = P0 @ rho @ P0
         else:
-            self.state[i0] = 0
-            self.state /= np.sqrt(p1)
-        
+            if p1 > 0:
+                rho_post = P1 @ rho @ P1 / p1
+            else:
+                rho_post = P1 @ rho @ P1
+
+        self.state = rho_post
         self.cbits.set_bit(cbit, collapse)
-        self._measurements[qubit] = {
-            "outcome": collapse,
-            "cbit": cbit
-        }
+        self._measurements[qubit] = {"outcome": collapse, "cbit": cbit}
+
         return collapse
 
     def reset(self, qubit: int):

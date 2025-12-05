@@ -107,10 +107,19 @@ def apply_kqubit_channel(state, channel, targets, n_qubits, rng, circuit=None):
         for K in channel.kraus_ops:
             if K.shape != (d_sys, d_sys):
                 raise ValueError(f"Kraus op has shape {K.shape}, expected {(d_sys, d_sys)}")
+
             # Apply K on system index (row) and K† on system index (col)
             # rho_block indices: [s, e, s', e']
-            tmp = np.tensordot(K, rho_block, axes=([1], [0]))      # K_{a,s} rho_{s,e,s',e'} -> tmp_{a,e,s',e'}
-            tmp2 = np.tensordot(K.conj(), tmp, axes=([1], [2]))    # K*_{b,s'} tmp_{a,e,s',e'} -> out_{a,e,b,e'}
+
+            # First: K_{a,s} rho_{s,e,s',e'} -> tmp_{a,e,s',e'}
+            tmp = np.tensordot(K, rho_block, axes=([1], [0]))
+
+            # Then: K*_{b,s'} tmp_{a,e,s',e'} -> tmp2_{b,a,e,e'}
+            tmp2 = np.tensordot(K.conj(), tmp, axes=([1], [2]))
+
+            # Reorder to (a, e, b, e') so it matches rho_out_block
+            tmp2 = tmp2.transpose(1, 2, 0, 3)
+
             rho_out_block += tmp2
 
         # reshape back to full density matrix
