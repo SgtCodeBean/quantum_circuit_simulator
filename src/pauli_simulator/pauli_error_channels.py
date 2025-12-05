@@ -2,6 +2,43 @@ import numpy as np
 import time
 from Tableau_Ver2 import Tableau
 
+def build_default_pauli_error_config(
+    p_1q: float = 0.001,
+    p_2q: float = 0.01,
+    p_meas: float = 0.002,
+) -> dict:
+    """
+    Build a reasonable default Pauli error configuration.
+
+    Args:
+        p_1q: total Pauli error rate for single-qubit gates
+        p_2q: total Pauli error rate (per qubit) for two-qubit gates
+        p_meas: total Pauli error rate applied just before measurement
+
+    Returns:
+        dict mapping gate name -> (px, py, pz)
+    """
+    # Symmetric Pauli channels:
+    #   p_total = px + py + pz
+    p1 = p_1q / 3.0
+    p2 = p_2q / 3.0
+    pm = p_meas / 3.0
+
+    return {
+        # 1-qubit Clifford gates
+        "h": (p1, p1, p1),
+        "s": (p1, p1, p1),
+        "x": (p1, p1, p1),
+        "y": (p1, p1, p1),
+        "z": (p1, p1, p1),
+
+        # 2-qubit gate (you already call noise on both c and t)
+        "cx": (p2, p2, p2),
+
+        # measurement pre-noise
+        "measure": (pm, pm, pm),
+    }
+
 """
 Class for Pauli error channels
 """
@@ -24,7 +61,11 @@ class NoisySimulator:
         """
         self.tableau = Tableau(n, enable_metrics=enable_metrics)
         self.n = n
-        self.error_config = error_config if error_config is not None else {}
+
+        if error_config is None:
+            self.error_config = build_default_pauli_error_config()
+        else:
+            self.error_config = error_config
         self.rng = np.random.default_rng()
 
         self._enable_metrics = enable_metrics

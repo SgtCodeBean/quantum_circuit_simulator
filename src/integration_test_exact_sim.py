@@ -960,7 +960,7 @@ def test_qasm_end_to_end_with_noise_vs_ideal():
         channel_registry=ChannelRegistry(preload_defaults=True),
         default_spec={
             "type": "depolarizing",
-            "params": (0.5,),
+            "params": (0.3,),
             "scope": "per_qubit",
         },
         per_gate_specs={}
