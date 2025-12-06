@@ -209,7 +209,15 @@ def main():
             format_type=args.format
             )
     elif args.mode == "density":
-        run_density_simulator(args.file, args.metrics, args.output)
+        run_statevector_simulator(
+            file=args.file, 
+            shots=args.shots, 
+            metrics=args.metrics, 
+            output=args.output, 
+            seed=args.seed,
+            verbose=verbose,
+            format_type=args.format
+            )
     elif args.mode == "tableau":
         run_tableau_simulator(
             file=args.file,
