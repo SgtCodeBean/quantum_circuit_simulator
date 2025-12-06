@@ -60,17 +60,41 @@ def run_statevector_simulator(file, shots, metrics=False, output=None, seed=None
     if verbose and output:
         print(f"\n✓ Results saved to {output}")
 
-def run_density_simulator(file, metrics=None, output=None):
+def run_density_simulator(file, shots, metrics=None, seed=None, output=None, verbose=True, format_type=None):
     print(f"Running density matrix simulation for {file}...")
 
-    
-
     if output:
-        with open(output, "w") as f:
-            f.write()
-        print(f"Results saved to {output}")
+        print(f"Output will be saved to: {output}")
+
+    qc = qasm_parser.qasm_file_to_exactsim(file, num_shots=shots, use_density_matrix=True, enable_metrics=metrics, rng_seed=seed)
+
+    if format_type is None:
+        format_type = determine_output_format(output)
+    
+    writer = ResultWriter(
+        output_path=output,
+        format_type=format_type,
+        verbose=verbose
+    )
+
+    if shots > 1 and qc.num_cbits > 0:
+        print("Note: Shot-based execution with density matrices...")
+        shot_results = qc.run_shots(verbose=False)
+        writer.write_shot_results(shot_results)
+        
+        if metrics and verbose:
+            print("\n" + "="*60)
+            qc.print_metrics()
     else:
-        print()
+        exec_result = qc.execute(verbose=False)
+        writer.write_execution_result(exec_result)
+        
+        if metrics and verbose:
+            print("\n" + "="*60)
+            qc.print_metrics()
+    
+    if verbose and output:
+        print(f"\n✓ Results saved to {output}")
 
 def run_tableau_simulator(file, shots, metrics=None, output=None, verbose=False, format_type=None):
     print(f"Running tableau structure simulation for {file}...")

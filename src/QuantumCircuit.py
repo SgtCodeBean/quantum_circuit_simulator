@@ -127,9 +127,9 @@ class QuantumCircuit:
         self.metrics.end_execution()
 
         result = ResultManager.build_execution_result(
-            self.state, self.num_qubits, self.num_cbits,
-            self.ops, self.cbits, self._measurements,
-            self.metrics.get_summary()
+            state=self.state, num_qubits=self.num_qubits, num_cbits=self.num_cbits,
+            ops=self.ops, cbits=self.cbits, measurements=self._measurements,
+            metrics=self.metrics.get_summary(), use_density_matrix=self.use_density_matrix
         )
 
         self.results.store_execution_result(result)

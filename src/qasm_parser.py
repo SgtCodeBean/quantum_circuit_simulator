@@ -191,7 +191,8 @@ def qasm_file_to_tableau(path: Union[str, Path], basis_gates: Optional[List[str]
     ir = parse_qasm_file(path, basis_gates=basis_gates)
     return build_tableau_from_ir(ir, num_shots=num_shots, metrics=metrics)
 
-def qasm_to_exactsim(qasm: str, basis_gates: Optional[List[str]] = None, gate_reg = GateRegistry(preload_defaults=True), num_shots = 1024, enable_metrics = False, rng_seed = None):
+def qasm_to_exactsim(qasm: str, basis_gates: Optional[List[str]] = None, gate_reg = GateRegistry(preload_defaults=True), num_shots = 1024, 
+                     use_density_matrix=False, enable_metrics = False, rng_seed = None):
     """
     One-step conversion from QASM string to an Exact Circuit Simulator.
 
@@ -207,9 +208,10 @@ def qasm_to_exactsim(qasm: str, basis_gates: Optional[List[str]] = None, gate_re
         QuantumCircuit: Ready-to-execute Quantum Circuit
     """
     ir = parse_qasm_source(qasm, basis_gates=basis_gates)
-    return build_circuit_from_ir(ir=ir, reg=gate_reg, num_shots=num_shots, metrics= enable_metrics, rng_seed=rng_seed)
+    return build_circuit_from_ir(ir=ir, reg=gate_reg, num_shots=num_shots, use_density_matrix=use_density_matrix, metrics= enable_metrics, rng_seed=rng_seed)
 
-def qasm_file_to_exactsim(path: str, basis_gates: Optional[List[str]] = None, gate_reg = GateRegistry(preload_defaults=True), num_shots = 1024, enable_metrics = False, rng_seed = None):
+def qasm_file_to_exactsim(path: str, basis_gates: Optional[List[str]] = None, gate_reg = GateRegistry(preload_defaults=True), num_shots = 1024, 
+                          use_density_matrix=False, enable_metrics = False, rng_seed = None):
     """
     One-step conversion from QASM file to an Exact Circuit Simulator.
 
@@ -225,7 +227,7 @@ def qasm_file_to_exactsim(path: str, basis_gates: Optional[List[str]] = None, ga
         QuantumCircuit: Ready-to-execute Quantum Circuit
     """
     ir = parse_qasm_file(path, basis_gates=basis_gates)
-    return build_circuit_from_ir(ir=ir, reg=gate_reg, num_shots=num_shots, metrics= enable_metrics, rng_seed=rng_seed)
+    return build_circuit_from_ir(ir=ir, reg=gate_reg, num_shots=num_shots, use_density_matrix=use_density_matrix, metrics=enable_metrics, rng_seed=rng_seed)
 
 # Test
 if __name__ == "__main__":

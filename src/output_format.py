@@ -24,12 +24,17 @@ class OutputFormatter:
         Returns:
             Formatted string
         """
+        is_density = result.get('simulation_type') == 'density_matrix'
+
         if format_type == 'json':
             return OutputFormatter._format_execution_json(result)
         elif format_type == 'minimal':
             return OutputFormatter._format_execution_minimal(result)
-        else:  # text
-            return OutputFormatter._format_execution_text(result)
+        else:
+            if is_density:
+                return OutputFormatter._format_density_text(result)
+            else:
+                return OutputFormatter._format_execution_text(result)
     
     @staticmethod
     def format_shot_results(results: Dict[str, Any], format_type: str = 'text') -> str:
@@ -49,7 +54,7 @@ class OutputFormatter:
             return OutputFormatter._format_shots_csv(results)
         elif format_type == 'minimal':
             return OutputFormatter._format_shots_minimal(results)
-        else:  # text
+        else:
             return OutputFormatter._format_shots_text(results)
     
     @staticmethod
@@ -152,6 +157,105 @@ class OutputFormatter:
         return "\n".join(lines)
     
     @staticmethod
+    def _format_density_text(result: Dict[str, Any]) -> str:
+        """Format density matrix execution result as human-readable text."""
+        lines = []
+        lines.append("=" * 60)
+        lines.append("QUANTUM CIRCUIT EXECUTION RESULT (Density Matrix)")
+        lines.append("=" * 60)
+        
+        # Circuit info
+        lines.append("\n[CIRCUIT INFO]")
+        info = result['circuit_info']
+        lines.append(f"  Qubits:       {info['num_qubits']}")
+        lines.append(f"  Classical:    {info['num_cbits']}")
+        lines.append(f"  Operations:   {info['num_operations']} "
+                    f"({info['gate_count']} gates, {info['measurement_count']} measurements, "
+                    f"{info['reset_count']} resets)")
+        lines.append(f"  Matrix size:  {2**info['num_qubits']} × {2**info['num_qubits']}")
+        
+        # Classical bits
+        if result.get('classical_bits'):
+            lines.append("\n[CLASSICAL REGISTER]")
+            bitstring = result['classical_bits']['bitstring']
+            lines.append(f"  Bitstring: |{bitstring}⟩")
+            for cbit, value in sorted(result['classical_bits'].items()):
+                if cbit != 'bitstring':
+                    lines.append(f"  {cbit} = {value}")
+        
+        # Measurements
+        if result.get('measurements'):
+            lines.append("\n[MEASUREMENTS]")
+            for qubit, info in sorted(result['measurements'].items()):
+                lines.append(f"  {qubit} → {info['outcome']} (stored in {info['stored_in']})")
+        
+        # Density matrix properties
+        lines.append("\n[DENSITY MATRIX PROPERTIES]")
+        
+        # Purity
+        if 'purity' in result:
+            lines.append(f"  Purity: {result['purity']:.6f}")
+            if result['purity'] > 0.99:
+                lines.append(f"    (≈ 1, nearly pure state)")
+            else:
+                lines.append(f"    (< 1, mixed state)")
+        
+        # Von Neumann entropy
+        if 'entropy' in result:
+            lines.append(f"  Von Neumann Entropy: {result['entropy']:.6f}")
+        
+        # Trace (should be 1)
+        if 'trace' in result:
+            lines.append(f"  Trace: {result['trace']:.6f} (should be 1.0)")
+        
+        # Show diagonal (probabilities)
+        lines.append("\n[PROBABILITY DISTRIBUTION]")
+        probs = result['probabilities']
+        num_qubits = result['circuit_info']['num_qubits']
+        threshold = 1e-10
+        
+        non_zero_probs = [(i, probs[i]) for i in range(len(probs)) if probs[i] > threshold]
+        
+        if len(non_zero_probs) <= 8:
+            for i, prob in non_zero_probs:
+                bitstring = format(i, f'0{num_qubits}b')
+                lines.append(f"  |{bitstring}⟩: P = {prob:.6f}")
+        else:
+            non_zero_probs.sort(key=lambda x: x[1], reverse=True)
+            lines.append(f"  Showing top 8 of {len(non_zero_probs)} non-zero probabilities:")
+            for i, prob in non_zero_probs[:8]:
+                bitstring = format(i, f'0{num_qubits}b')
+                lines.append(f"  |{bitstring}⟩: P = {prob:.6f}")
+        
+        # Show coherences (off-diagonal elements) if significant
+        if 'significant_coherences' in result and result['significant_coherences']:
+            lines.append("\n[SIGNIFICANT COHERENCES]")
+            lines.append(f"  (Off-diagonal elements with |ρ_ij| > {result.get('coherence_threshold', 0.01)})")
+            coherences = result['significant_coherences'][:10]  # Show top 10
+            for coh in coherences:
+                i, j, value = coh['i'], coh['j'], coh['value']
+                i_bits = format(i, f'0{num_qubits}b')
+                j_bits = format(j, f'0{num_qubits}b')
+                real = value.real
+                imag = value.imag
+                val_str = f"{real:+.4f}{imag:+.4f}j" if abs(imag) > 1e-10 else f"{real:+.4f}"
+                lines.append(f"  ρ[{i_bits},{j_bits}] = {val_str}")
+            
+            if len(result['significant_coherences']) > 10:
+                lines.append(f"  ... and {len(result['significant_coherences']) - 10} more")
+        
+        # Metrics
+        if result.get('metrics'):
+            lines.append("\n[PERFORMANCE METRICS]")
+            metrics = result['metrics']
+            lines.append(f"  Execution time: {metrics['execution']['total_time_seconds']:.6f}s")
+            lines.append(f"  Peak memory:    {metrics['memory']['peak_mb']:.2f} MB")
+            lines.append(f"  Memory delta:   {metrics['memory']['delta_mb']:+.2f} MB")
+        
+        lines.append("\n" + "=" * 60 + "\n")
+        return "\n".join(lines)
+    
+    @staticmethod
     def _format_execution_minimal(result: Dict[str, Any]) -> str:
         """Format execution result as minimal summary."""
         lines = []
@@ -174,19 +278,72 @@ class OutputFormatter:
         return "\n".join(lines)
     
     @staticmethod
-    def _format_execution_json(result: Dict[str, Any]) -> str:
+    def _format_execution_minimal(result: Dict[str, Any], is_density: bool = False) -> str:
+        """Format execution result as minimal summary."""
+        lines = []
+        
+        sim_type = "Density Matrix" if is_density else "Statevector"
+        lines.append(f"Simulation: {sim_type}")
+        
+        if result.get('classical_bits'):
+            lines.append(f"Result: |{result['classical_bits']['bitstring']}⟩")
+        
+        # Show top 3 most probable states
+        probs = result['probabilities']
+        num_qubits = result['circuit_info']['num_qubits']
+        
+        non_zero = [(i, probs[i]) for i in range(len(probs)) if probs[i] > 1e-10]
+        non_zero.sort(key=lambda x: x[1], reverse=True)
+        
+        lines.append("Top states:")
+        for i, prob in non_zero[:3]:
+            bitstring = format(i, f'0{num_qubits}b')
+            lines.append(f"  |{bitstring}⟩: {prob:.4f}")
+        
+        if is_density and 'purity' in result:
+            lines.append(f"Purity: {result['purity']:.4f}")
+        
+        return "\n".join(lines)
+    
+    @staticmethod
+    def _format_execution_json(result: Dict[str, Any], is_density: bool = False) -> str:
         """Format execution result as JSON."""
-        # Convert numpy arrays to lists for JSON serialization
         json_result = result.copy()
         
-        if 'state_vector' in json_result:
-            json_result['state_vector'] = [
-                {'real': float(c.real), 'imag': float(c.imag)} 
-                for c in json_result['state_vector']
-            ]
-        
-        if 'probabilities' in json_result:
-            json_result['probabilities'] = [float(p) for p in json_result['probabilities']]
+        if is_density:
+            # For density matrix, don't include the full matrix (too large)
+            # Just include summary statistics
+            if 'density_matrix' in json_result:
+                del json_result['density_matrix']
+            
+            # Convert probabilities
+            if 'probabilities' in json_result:
+                json_result['probabilities'] = [float(p) for p in json_result['probabilities']]
+            
+            # Convert coherences if present
+            if 'significant_coherences' in json_result:
+                coherences_list = []
+                for coh in json_result['significant_coherences']:
+                    coherences_list.append({
+                        'i': int(coh['i']),
+                        'j': int(coh['j']),
+                        'value': {
+                            'real': float(coh['value'].real),
+                            'imag': float(coh['value'].imag)
+                        },
+                        'magnitude': float(abs(coh['value']))
+                    })
+                json_result['significant_coherences'] = coherences_list
+        else:
+            # Convert statevector
+            if 'state_vector' in json_result:
+                json_result['state_vector'] = [
+                    {'real': float(c.real), 'imag': float(c.imag)} 
+                    for c in json_result['state_vector']
+                ]
+            
+            if 'probabilities' in json_result:
+                json_result['probabilities'] = [float(p) for p in json_result['probabilities']]
         
         return json.dumps(json_result, indent=2)
     
