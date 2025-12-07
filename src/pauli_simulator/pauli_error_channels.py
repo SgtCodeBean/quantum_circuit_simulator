@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from Tableau_Ver2 import Tableau
+from .Tableau_Ver2 import Tableau
 
 def build_default_pauli_error_config(
     p_1q: float = 0.001,
