@@ -18,6 +18,7 @@ class Tableau:
 
         Args:
             n (int): Number of qubits
+            num_cbits (int): Number of classical bits
             enable_metrics (bool): Whether to collect performance metrics
         """
         self.n = n
@@ -387,6 +388,30 @@ class Tableau:
         self._metrics['execution']['total_time_seconds'] = total_time
 
         return self._metrics.copy()
+    
+    def print_state(self):
+        """Prints the full (X | Z | R) stabilizer and destabilizer matrix."""
+        print("-" * 40)
+        print(f"Tableau State ({self.n} qubits):")
+        
+        # Combine X, Z, and R matrices
+        stabilizer_matrix = np.hstack((self._x, self._z, self._r[:, np.newaxis]))
+        
+        # Determine the sign for the phase vector R (0->+1, 1->-1)
+        signs = np.where(self._r == 0, '+', '-')
+
+        print("\nStabilizer Generators (rows 0 to n-1):")
+        for i in range(self.n):
+            # Format the stabilizer row: [X_part | Z_part]
+            row_str = ' '.join(map(str, stabilizer_matrix[i, :-1]))
+            print(f"S{i}: {signs[i]} ({row_str})")
+
+        print("\nDestabilizer Generators (rows n to 2n-1):")
+        for i in range(self.n, 2 * self.n):
+            # Format the destabilizer row
+            row_str = ' '.join(map(str, stabilizer_matrix[i, :-1]))
+            print(f"D{i-self.n}: {signs[i]} ({row_str})")
+        print("-" * 40)
     
     def print_circuit(self):
         """Print a readable representation of the circuit structure."""
