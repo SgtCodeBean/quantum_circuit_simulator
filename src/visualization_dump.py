@@ -28,15 +28,20 @@ def create_memory_context_plot():
 
     # 2. Define Real-World Memory Milestones (in Gigabytes)
     milestones = [
-        (128, 'High-End Workstation (128 GB)', 'b', 26),
-        (4096, 'Large Enterprise Server (4 TB)', 'g', 38),
-        (5500000, 'El Capitan Total RAM (~5.5 PB)', 'r', 48) 
+        (128, 'High-End Workstation (128 GB)', 'b', 16),
+        (4096, 'Large Enterprise Server (4 TB)', 'g', 22),
+        (5500000, 'El Capitan Total RAM (~5.5 PB)', '#a40014', 30) 
     ]
     
     # ======================================================================
     # A. LOG SCALE PLOT (Mathematically Correct for Comparison)
     # ======================================================================
     plt.figure(figsize=(12, 8))
+
+    plt.rcParams["grid.color"] = "black"
+    plt.rcParams["grid.linestyle"] = "-"
+    plt.rcParams["grid.linewidth"] = 1.5
+    plt.rcParams["grid.alpha"] = 1.0
     
     plt.plot(qubits, exact_memory_gb, 
              label=r'Exact Memory ($\mathcal{O}(2^n)$)', 
@@ -48,7 +53,7 @@ def create_memory_context_plot():
              
     # Add Milestones
     for mem_gb, label, color, n_qubits_approx in milestones:
-        plt.axhline(y=mem_gb, color=color, linestyle=':', linewidth=1.5, alpha=0.7)
+        plt.axhline(y=mem_gb, color=color, linestyle=':', linewidth=2.0, alpha=0.9)
         
         if mem_gb >= 1024**2: 
             label_text = label.replace("PB", f"({mem_gb/1024**2:.1f} PB)")
@@ -58,7 +63,7 @@ def create_memory_context_plot():
             label_text = label
             
         plt.text(n_qubits_approx - 2, mem_gb * 1.5, label_text, 
-                 color=color, fontsize=10, verticalalignment='bottom')
+                 color=color, fontsize=15, verticalalignment='bottom')
         
     # Final Plot Aesthetics (Log)
     plt.title(r'Memory Wall: Exponential vs. Polynomial Scaling (Log Scale)', fontsize=16)
@@ -83,7 +88,12 @@ def create_memory_context_plot():
     linear_exact_memory_gb = (BYTES_PER_COMPLEX * 2**linear_qubits) / GB_IN_BYTES
     linear_pauli_memory_gb = (4 * linear_qubits**2 + TABLEAU_OVERHEAD_BYTES) / GB_IN_BYTES
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(15, 6))
+
+    plt.rcParams["grid.color"] = "black"
+    plt.rcParams["grid.linestyle"] = "-"
+    plt.rcParams["grid.linewidth"] = 1.5
+    plt.rcParams["grid.alpha"] = 1.0
     
     plt.plot(linear_qubits, linear_exact_memory_gb, 
              label=r'Exact Simulator Memory ($\mathcal{O}(2^n)$)', 

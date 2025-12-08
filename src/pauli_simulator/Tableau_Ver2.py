@@ -389,6 +389,20 @@ class Tableau:
 
         return self._metrics.copy()
     
+    def get_state_memory_mb(self) -> float:
+        """
+        Calculates the memory used by the Tableau arrays (O(n^2)).
+        """
+        
+        total_bytes = (self._x.nbytes + 
+                       self._z.nbytes + 
+                       self._r.nbytes)
+        
+        if self.num_cbits > 0:
+            total_bytes += self._cbits.nbytes
+            
+        return total_bytes / (1024 * 1024)
+    
     def print_state(self):
         """Prints the full (X | Z | R) stabilizer and destabilizer matrix."""
         print("-" * 40)

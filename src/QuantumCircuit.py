@@ -352,6 +352,16 @@ class QuantumCircuit:
             if len(probs_nonzero) == 0:
                 return 0.0
             return -np.sum(probs_nonzero * np.log2(probs_nonzero))
+        
+    def get_state_memory_mb(self) -> float:
+        """
+        Calculates the memory used EXCLUSIVELY by the state vector array (O(2^n)).
+        This bypasses the Python process overhead.
+        """
+        if self.use_density_matrix:
+            return self.state.nbytes / (1024 * 1024)
+        else:
+            return self.state.nbytes / (1024 * 1024)
 
     def get_circuit_depth(self):
         """

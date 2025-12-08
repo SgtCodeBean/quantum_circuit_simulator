@@ -658,7 +658,7 @@ class TableauOutputFormatter:
         
         memory = metrics['memory']
         lines.append("\n--- Memory (MB) ---")
-        lines.append(f"Tableau theoretical size: {memory['tableau_size_mb']:.4f}")
+        lines.append(f"Tableau theoretical size: {memory['tableau_size_mb']:.5f}")
         lines.append(f"Initial (RSS):          {memory['initial_mb']:.2f}")
         lines.append(f"Final (RSS):            {memory['final_mb']:.2f}")
         lines.append(f"Peak (RSS):             {memory['peak_mb']:.2f}")

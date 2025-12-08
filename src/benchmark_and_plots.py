@@ -11,7 +11,7 @@ from src.gates.registry import GateRegistry
 
 gate_registry = GateRegistry()
 
-QUBIT_RANGE = [4, 8, 12, 16, 20] 
+QUBIT_RANGE = [4, 8, 10, 12, 16, 20] 
 CIRCUIT_DEPTH = 50
 FAILED = -1.0
 
@@ -69,7 +69,7 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
             run_time = end_time - start_time
 
         elif name == "Exact (State Vector)":
-            sim = simulator_class(qubits)
+            sim = simulator_class(qubits, num_cbits=qubits)
             start_time = time.perf_counter()
 
             for gate, c, t in circuit:
@@ -82,7 +82,8 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
                     sim.add_gate(gate_registry.get(gate), targets=c)
             
             sim.execute()
-            sim.measure_all()
+            for i in range(qubits):
+                sim.measure(i, i)
             
             end_time = time.perf_counter()
             run_time = end_time - start_time
@@ -95,7 +96,7 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
          success = False
     
     current_rss = measure_peak_rss(os.getpid())
-    peak_rss = max(peak_rss, current_rss)
+    peak_rss = sim.get_state_memory_mb()
     
     if not success:
         run_time = FAILED
@@ -124,8 +125,15 @@ def collect_data():
         exact_results = run_benchmark(n, circuit, QuantumCircuit, "Exact (State Vector)")
 
         print(f"  Pauli Time: {pauli_results['time_s']:.4f} s | Exact Time: {exact_results['time_s']:.4f} s")
-        print(f"  Pauli Mem: {pauli_results['peak_rss_mb']:.2f} MB | Exact Mem: {exact_results['peak_rss_mb']:.2f} MB")
+        print(f"  Pauli Mem: {pauli_results['peak_rss_mb']:.5f} MB | Exact Mem: {exact_results['peak_rss_mb']:.5f} MB")
 
+        time_diff = exact_results['time_s'] - pauli_results['time_s'] if exact_results['time_s'] != FAILED else FAILED
+        mem_diff = exact_results['peak_rss_mb'] - pauli_results['peak_rss_mb'] if exact_results['peak_rss_mb'] != FAILED else FAILED
+
+        time_diff_percent = (time_diff / exact_results['time_s'] * 100) if exact_results['time_s'] != FAILED else FAILED
+        mem_diff_percent = (mem_diff / exact_results['peak_rss_mb'] * 100) if exact_results['peak_rss_mb'] != FAILED else FAILED
+
+        print(f"  Time Diff: {time_diff:.4f} s ({time_diff_percent:.2f}%) | Mem Diff: {mem_diff:.2f} MB ({mem_diff_percent:.2f}%)")
 
         results.append({
             'Qubits': n,
@@ -146,10 +154,15 @@ def plot_results(df: pd.DataFrame):
     df_plot = df.replace(FAILED, np.nan)
     
     plt.figure(figsize=(10, 6))
+    plt.rcParams["grid.color"] = "black"
+    plt.rcParams["grid.linestyle"] = "--"
+    plt.rcParams["grid.linewidth"] = 1.5
+    plt.rcParams["grid.alpha"] = 1.0
 
-    plt.plot(df_plot['Qubits'], df_plot['Pauli_Time_s'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^k)$', linestyle='-', color='blue')
-    plt.plot(df_plot['Qubits'], df_plot['Exact_Time_s'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red')
+    plt.plot(df_plot['Qubits'], df_plot['Pauli_Time_s'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^k)$', linestyle='-', color='blue', markersize=12)
+    plt.plot(df_plot['Qubits'], df_plot['Exact_Time_s'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red', markersize=12)
 
+    # plt.grid(visible=True, color='black', linestyle='-', linewidth=1.5, alpha=1.0) 
     plt.yscale('log')
     plt.title('Execution Time Growth: Pauli (Polynomial) vs. Exact (Exponential)', fontsize=14)
     plt.xlabel('Number of Qubits ($n$)', fontsize=12)
@@ -163,9 +176,10 @@ def plot_results(df: pd.DataFrame):
 
     plt.figure(figsize=(10, 6))
 
-    plt.plot(df_plot['Qubits'], df_plot['Pauli_Mem_MB'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^2)$', linestyle='-', color='blue')
-    plt.plot(df_plot['Qubits'], df_plot['Exact_Mem_MB'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red')
+    plt.plot(df_plot['Qubits'], df_plot['Pauli_Mem_MB'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^2)$', linestyle='-', color='blue', markersize=12)
+    plt.plot(df_plot['Qubits'], df_plot['Exact_Mem_MB'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red', markersize=12)
 
+    # plt.grid(visible=True, color='black', linestyle='--', linewidth=1.5, alpha=1.0) 
     plt.yscale('log')
     plt.title('Peak Memory Growth: Pauli (Polynomial) vs. Exact (Exponential)', fontsize=14)
     plt.xlabel('Number of Qubits ($n$)', fontsize=12)
