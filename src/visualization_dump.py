@@ -6,6 +6,8 @@ def create_memory_context_plot():
     """
     Creates two graphs: one log scale (for true comparison) and one linear scale
     (to show the exponential curve visually).
+
+    AI Generated to help with creating the contextual memory scaling charts.
     """
     # 1. Configuration and Data Points
     QUBITS_MAX = 52 
@@ -41,7 +43,7 @@ def create_memory_context_plot():
     plt.rcParams["grid.color"] = "black"
     plt.rcParams["grid.linestyle"] = "-"
     plt.rcParams["grid.linewidth"] = 1.5
-    plt.rcParams["grid.alpha"] = 1.0
+    plt.rcParams["grid.alpha"] = 0.3
     
     plt.plot(qubits, exact_memory_gb, 
              label=r'Exact Memory ($\mathcal{O}(2^n)$)', 
@@ -53,7 +55,7 @@ def create_memory_context_plot():
              
     # Add Milestones
     for mem_gb, label, color, n_qubits_approx in milestones:
-        plt.axhline(y=mem_gb, color=color, linestyle=':', linewidth=2.0, alpha=0.9)
+        plt.axhline(y=mem_gb, color=color, linestyle=':', linewidth=2.0, alpha=0.5)
         
         if mem_gb >= 1024**2: 
             label_text = label.replace("PB", f"({mem_gb/1024**2:.1f} PB)")
@@ -66,15 +68,16 @@ def create_memory_context_plot():
                  color=color, fontsize=15, verticalalignment='bottom')
         
     # Final Plot Aesthetics (Log)
-    plt.title(r'Memory Wall: Exponential vs. Polynomial Scaling (Log Scale)', fontsize=16)
-    plt.xlabel('Number of Qubits ($n$)', fontsize=14)
-    plt.ylabel('Theoretical Memory Used by State (Gigabytes, Log Scale)', fontsize=14)
+    plt.title(r'Memory Wall: Exponential vs. Polynomial Scaling', fontsize=16)
+    plt.gca().tick_params(axis='both', which='major', labelsize=15, direction='in', length=5, width=1.5)
+    plt.xlabel('Number of Qubits ($N$)', fontsize=15)
+    plt.ylabel('Memory Cost (GB)', fontsize=15)
     plt.yscale('log')
     plt.xlim(1, QUBITS_MAX)
     # Set lower limit low enough to capture the O(n^2) growth curve
     plt.ylim(10**(-6), exact_memory_gb[-1] * 2) 
-    plt.grid(True, which="both", ls="--", linewidth=0.5, alpha=0.7)
-    plt.legend(loc='upper left', fontsize=12, title='Simulator Type')
+    plt.grid(True, which="both", ls="--", linewidth=0.5)
+    plt.legend(loc='upper left', fontsize=15, frameon=False, ncol=2, handlelength=0.5, columnspacing=0.6)
     plt.tight_layout()
     plt.savefig('memory_wall_context_plot_log.png')
 

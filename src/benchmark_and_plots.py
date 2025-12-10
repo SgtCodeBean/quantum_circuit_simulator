@@ -11,7 +11,7 @@ from src.gates.registry import GateRegistry
 
 gate_registry = GateRegistry()
 
-QUBIT_RANGE = [4, 8, 10, 12, 16, 20] 
+QUBIT_RANGE = [4, 6, 8, 10, 12, 14, 16, 18, 20] 
 CIRCUIT_DEPTH = 50
 FAILED = -1.0
 
@@ -40,9 +40,6 @@ def measure_peak_rss(pid: int) -> float:
 
 def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name: str) -> Dict[str, float]:
     """Runs a single benchmark for a given simulator and returns time and peak memory."""
-    
-    start_rss = measure_peak_rss(os.getpid())
-    peak_rss = start_rss
     run_time = FAILED
     success = True 
 
@@ -52,8 +49,6 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
             start_time = time.perf_counter()
             
             for gate, c, t in circuit:
-                current_rss = measure_peak_rss(os.getpid())
-                peak_rss = max(peak_rss, current_rss)
 
                 if gate == 'h':
                     sim.h(c)
@@ -73,8 +68,6 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
             start_time = time.perf_counter()
 
             for gate, c, t in circuit:
-                current_rss = measure_peak_rss(os.getpid())
-                peak_rss = max(peak_rss, current_rss)
 
                 if gate == 'cx':
                     sim.add_gate(gate_registry.get('cx'), targets=[c,t])
@@ -95,7 +88,6 @@ def run_benchmark(qubits: int, circuit: List[Tuple], simulator_class: type, name
          print(f"ERROR: {name} run at {qubits} qubits failed: {e}")
          success = False
     
-    current_rss = measure_peak_rss(os.getpid())
     peak_rss = sim.get_state_memory_mb()
     
     if not success:
@@ -122,7 +114,10 @@ def collect_data():
         circuit = generate_random_clifford_circuit(n, CIRCUIT_DEPTH)
 
         pauli_results = run_benchmark(n, circuit, Tableau, "Pauli (Tableau)")
-        exact_results = run_benchmark(n, circuit, QuantumCircuit, "Exact (State Vector)")
+        if n <= 12:
+            exact_results = run_benchmark(n, circuit, QuantumCircuit, "Exact (State Vector)")
+        else:
+            exact_results = {'time_s': FAILED, 'peak_rss_mb': FAILED}
 
         print(f"  Pauli Time: {pauli_results['time_s']:.4f} s | Exact Time: {exact_results['time_s']:.4f} s")
         print(f"  Pauli Mem: {pauli_results['peak_rss_mb']:.5f} MB | Exact Mem: {exact_results['peak_rss_mb']:.5f} MB")
@@ -153,28 +148,31 @@ def plot_results(df: pd.DataFrame):
     
     df_plot = df.replace(FAILED, np.nan)
     
-    plt.figure(figsize=(10, 6))
     plt.rcParams["grid.color"] = "black"
     plt.rcParams["grid.linestyle"] = "--"
     plt.rcParams["grid.linewidth"] = 1.5
-    plt.rcParams["grid.alpha"] = 1.0
+    plt.rcParams["grid.alpha"] = 0.3
+
+    plt.figure(figsize=(10, 6))
+    plt.gca().tick_params(axis='both', which='major', labelsize=15, direction='in', length=5, width=1.5)
 
     plt.plot(df_plot['Qubits'], df_plot['Pauli_Time_s'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^k)$', linestyle='-', color='blue', markersize=12)
     plt.plot(df_plot['Qubits'], df_plot['Exact_Time_s'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red', markersize=12)
 
     # plt.grid(visible=True, color='black', linestyle='-', linewidth=1.5, alpha=1.0) 
     plt.yscale('log')
-    plt.title('Execution Time Growth: Pauli (Polynomial) vs. Exact (Exponential)', fontsize=14)
-    plt.xlabel('Number of Qubits ($n$)', fontsize=12)
-    plt.ylabel('Execution Time (Seconds, Log Scale)', fontsize=12)
+    plt.title('Wall Time Growth: Pauli (Polynomial) vs. Exact (Exponential)', fontsize=14)
+    plt.xlabel('Number of Qubits ($N$)', fontsize=15)
+    plt.ylabel('Wall Time (Seconds)', fontsize=15)
     plt.xticks(df['Qubits'])
     plt.grid(True, which="both", ls="--", linewidth=0.5)
-    plt.legend(title='Simulator Type and Complexity')
+    # plt.legend(fontsize=15, frameon=False)
     plt.tight_layout()
     plt.savefig('timing_growth_comparison_final.png')
     print("Saved: timing_growth_comparison_final.png")
 
     plt.figure(figsize=(10, 6))
+    plt.gca().tick_params(axis='both', which='major', labelsize=15, direction='in', length=5, width=1.5)
 
     plt.plot(df_plot['Qubits'], df_plot['Pauli_Mem_MB'], marker='o', label='Pauli (Tableau) $\mathcal{O}(n^2)$', linestyle='-', color='blue', markersize=12)
     plt.plot(df_plot['Qubits'], df_plot['Exact_Mem_MB'], marker='s', label='Exact (State Vector) $\mathcal{O}(2^n)$', linestyle='--', color='red', markersize=12)
@@ -182,18 +180,11 @@ def plot_results(df: pd.DataFrame):
     # plt.grid(visible=True, color='black', linestyle='--', linewidth=1.5, alpha=1.0) 
     plt.yscale('log')
     plt.title('Peak Memory Growth: Pauli (Polynomial) vs. Exact (Exponential)', fontsize=14)
-    plt.xlabel('Number of Qubits ($n$)', fontsize=12)
-    plt.ylabel('Peak RSS (MB, Log Scale)', fontsize=12)
+    plt.xlabel('Number of Qubits ($N$)', fontsize=15)
+    plt.ylabel('Peak RSS (MB)', fontsize=15)
     plt.xticks(df['Qubits'])
     plt.grid(True, which="both", ls="--", linewidth=0.5)
-    plt.legend(title='Simulator Type and Complexity')
-    
-    failed_n = df[df['Exact_Mem_MB'] == FAILED]['Qubits']
-    if not failed_n.empty:
-        first_fail_n = failed_n.iloc[0]
-        plt.axvline(x=first_fail_n, color='gray', linestyle=':', linewidth=1.5, label='Approx. Failure Point')
-        plt.text(first_fail_n + 0.5, plt.ylim()[1] / 2, 'Resource Limit Reached',
-                 color='gray', rotation=90, va='center', ha='left', fontsize=9)
+    plt.legend(fontsize=15, frameon=False)
 
     plt.tight_layout()
     plt.savefig('memory_growth_comparison_final.png')
